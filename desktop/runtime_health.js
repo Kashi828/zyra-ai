@@ -1,0 +1,1 @@
+(() => { window.zyraRuntimeHealth = { load: async () => { const r = await fetch('/v1/setup/runtime-health'); if (!r.ok) throw new Error(`HTTP ${r.status}`); const s = await r.json(); document.documentElement.dataset.zyraRuntime = s.runtime; document.dispatchEvent(new CustomEvent('zyra:runtime-health', { detail: s })); return s; } }; })();
