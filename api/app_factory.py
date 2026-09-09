@@ -85,6 +85,10 @@ def create_app(db_path="data/zyra_security.sqlite3", runner=None):
         "tts": "local" if voice_tts else "unconfigured",
     }
     register_voice_routes(app, security, app.state.voice_gateway)
+    from desktop.runtime_health import RuntimeHealthService
+    from api.runtime_health_routes import register_runtime_health_routes
+    app.state.runtime_health = RuntimeHealthService()
+    register_runtime_health_routes(app, app.state.runtime_health)
     app.state.security_context = security
     app.state.realtime_events = event_hub
     app.state.remote_bridge = bridge
