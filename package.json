@@ -1,6 +1,6 @@
 {
   "name": "zyra-ai-desktop",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "description": "ZYRA AI Windows desktop shell",
   "main": "electron/main.js",
   "private": true,
@@ -41,9 +41,7 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "artifactName": "ZYRA-AI-Setup-${version}-${arch}.exe"
