@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZYRA AI</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+html[data-zyra-startup="onboarding"] #app,
+html[data-zyra-startup="onboarding"] .workspace,
+html[data-zyra-startup="onboarding"] .main-workspace { visibility: hidden; }
+html[data-zyra-startup="workspace"] #zyra-onboarding { display: none !important; }
+</style>
+</head>
+<body>
+<div id="setup" class="overlay hidden">
+  <div class="onboard-card setup-card">
+    <div class="brand">✦ ZYRA</div>
+    <h1>Prepare your ZYRA PC</h1>
+    <p>ZYRA checks the local runtime before first use. Nothing is installed or downloaded automatically.</p>
+    <div id="setupChecks" class="setup-checks"><div class="setup-loading">Checking your PC…</div></div>
+    <div class="setup-actions">
+      <button id="setupRefresh">Run Check Again</button>
+      <button id="setupContinue" class="primary" disabled>Continue</button>
+    </div>
+    <small class="setup-note">Required components are checked locally. Optional voice and Ollama components can be configured later.</small>
+  </div>
+</div>
+
+<div id="onboarding" class="overlay hidden">
+  <div class="onboard-card">
+    <div class="brand">✦ ZYRA</div>
+    <h1>Welcome to ZYRA AI</h1>
+    <p>Set up your local AI, connect your devices, and review permissions before you begin.</p>
+    <div class="step" id="obStep1">
+      <h3>1 · AI Engine</h3>
+      <p>Local AI is recommended for privacy and zero API cost.</p>
+      <button id="chooseLocal" class="primary">Use Local AI</button>
+    </div>
+    <div class="step hidden" id="obStep2">
+      <h3>2 · Connect a device</h3>
+      <p>You can pair Android later using the secure pairing flow.</p>
+      <button id="startPairing">Start Pairing</button>
+      <button id="skipPairing">Skip for now</button>
+    </div>
+    <div class="step hidden" id="obStep3">
+      <h3>3 · Review permissions</h3>
+      <label><input type="checkbox" checked disabled> PC apps</label>
+      <label><input type="checkbox" checked disabled> Authorized files</label>
+      <label><input type="checkbox" checked disabled> Web actions</label>
+      <label><input type="checkbox" checked disabled> Sensitive actions require confirmation</label>
+      <button id="finishOnboarding" class="primary">Finish Setup</button>
+    </div>
+  </div>
+</div>
+
+<aside>
+  <div class="brand">✦ ZYRA</div>
+  <nav>
+    <button data-section="assistant" class="active">Assistant</button>
+    <button data-section="tasks">Tasks</button>
+    <button data-section="devices">Devices</button>
+    <button data-section="permissions">Permissions</button>
+    <button data-section="settings">Settings</button>
+  </nav>
+  <div class="status"><span></span> <b>Local AI</b> · <em id="deviceSummary">Checking…</em></div>
+</aside>
+<main>
+  <header>
+    <div>
+      <h1>ZYRA AI</h1>
+      <p>Your AI agent for PC, web and connected devices.</p>
+    </div>
+    <button id="stopAgent" class="stop">Stop Agent</button>
+  </header>
+
+  <section id="page-assistant" class="page visible">
+    <div class="hero">
+      <div class="card">
+        <h2>What should ZYRA do?</h2>
+        <textarea id="goal" placeholder="Tell ZYRA your goal..."></textarea>
+        <div class="actions">
+          <button id="runTask" class="primary">Run Task</button>
+          <button>Attach</button>
+          <button id="voiceButton" class="voice-btn" title="Start voice input">🎙 Voice</button>
+        </div>
+        <div id="voicePanel" class="voice-panel hidden">
+          <div class="voice-head">
+            <div>
+              <b>Voice input</b>
+              <small id="voiceStatus">Ready to listen</small>
+            </div>
+            <select id="voiceLanguage" aria-label="Voice language">
+              <option value="en-IN">English (India)</option>
+              <option value="en-US">English (US)</option>
+              <option value="hi-IN">Hindi</option>
+              <option value="kn-IN">Kannada</option>
+            </select>
+          </div>
+          <div class="voice-meter"><span id="voiceMeter"></span></div>
+          <div class="voice-actions">
+            <button id="voiceStart" class="primary">Start Listening</button>
+            <button id="voiceStop" disabled>Stop</button>
+          </div>
+          <small class="voice-note">Uses the local microphone path when available. ZYRA sends captured audio only to the authenticated local voice service; the transcript is inserted into the normal task box before execution.</small>
+        </div>
+      </div>
+      <div class="card security">
+        <h3>Security</h3>
+        <div class="row"><span>Local-first mode</span><b>ON</b></div>
+        <div class="row"><span>Remote access</span><b>OFF</b></div>
+        <div class="row"><span>Sensitive confirmations</span><b>ON</b></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Live activity</h3>
+      <div id="activity" class="activity"><span>✓</span> Ready for your next task</div>
+    </div>
+  </section>
+
+  <section id="page-tasks" class="page">
+    <div class="card"><h2>Tasks</h2><div id="taskList"></div></div>
+  </section>
+
+  <section id="page-devices" class="page"><div class="card"><h2>Pair a device</h2><p>Start a short-lived secure pairing offer and confirm the PC identity on Android.</p><button id="pairDevice" class="primary">Start Secure Pairing</button><div id="pairStatus" class="activity" style="margin-top:14px">No pairing session active.</div></div>
+    <div class="card"><h2>Devices</h2><div id="deviceList"></div></div>
+  </section>
+
+  <section id="page-permissions" class="page">
+    <div class="card">
+      <h2>Permissions</h2>
+      <div class="list-item"><div><b>PC Apps</b><small>Open authorized applications</small></div><strong class="online">ENABLED</strong></div>
+      <div class="list-item"><div><b>PC Files</b><small>Read and manage authorized files</small></div><strong class="online">ENABLED</strong></div>
+      <div class="list-item"><div><b>PC Web</b><small>Open and control approved web actions</small></div><strong class="online">ENABLED</strong></div>
+      <div class="list-item"><div><b>Sensitive actions</b><small>Require explicit confirmation</small></div><strong class="online">ON</strong></div>
+    </div>
+  </section>
+
+  <section id="page-settings" class="page">
+    <div class="card">
+      <h2>Settings</h2>
+      <div class="setting"><div><b>Local-first mode</b><small>Prefer local AI and local services</small></div><label class="toggle"><input type="checkbox" checked disabled><span></span></label></div>
+      <div class="setting"><div><b>Remote access</b><small>Allow remote device control</small></div><label class="toggle"><input type="checkbox" disabled><span></span></label></div>
+      <div class="setting"><div><b>Notifications</b><small>Task and device notifications</small></div><label class="toggle"><input type="checkbox" checked disabled><span></span></label></div>
+    </div>
+  </section>
+</main>
+<script src="app.js"></script>
+<script src="startup_gate.js"></script>
+<script src="setup_wizard.js"></script>
+<script src="configuration_status.js"></script>
+</body>
+</html>

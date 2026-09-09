@@ -1,0 +1,4 @@
+# Optional local Windows voice dependencies
+sounddevice
+faster-whisper
+pyttsx3
