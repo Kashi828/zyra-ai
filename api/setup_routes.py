@@ -6,6 +6,10 @@ from desktop.startup_state import DesktopStartupController
 from desktop.setup_wizard import SetupWizard
 from desktop.configuration_service import ConfigurationService
 from desktop.configuration_status import ConfigurationStatusService
+from desktop.configuration_profiles import ConfigurationProfileService
+from desktop.configuration_validation import ConfigurationValidationService
+from desktop.runtime_ready import RuntimeReadyService
+from desktop.workspace_context import WorkspaceContextService
 
 def build_setup_router(state: FirstRunState | None = None) -> APIRouter:
     state = state or FirstRunState()
@@ -14,11 +18,35 @@ def build_setup_router(state: FirstRunState | None = None) -> APIRouter:
     wizard = SetupWizard(state)
     configuration = ConfigurationService()
     configuration_status = ConfigurationStatusService(configuration)
+    profiles = ConfigurationProfileService(configuration)
+    configuration_validation = ConfigurationValidationService(configuration)
+    runtime_ready = RuntimeReadyService(onboarding, configuration_status)
+    workspace_context = WorkspaceContextService(runtime_ready)
     router = APIRouter(prefix="/v1/setup", tags=["setup"])
 
     @router.get("/startup")
     def startup_state():
         return startup.decide().__dict__
+
+    @router.get("/configuration/profiles")
+    def configuration_profiles():
+        return {"profiles": profiles.list_profiles()}
+
+    @router.post("/configuration/profiles/{name}")
+    def configuration_profile_apply(name: str):
+        return profiles.apply(name)
+
+    @router.get("/configuration/validate")
+    def configuration_validate():
+        return configuration_validation.validate()
+
+    @router.get("/runtime-ready")
+    def runtime_ready_read():
+        return runtime_ready.read()
+
+    @router.get("/workspace-context")
+    def workspace_context_read():
+        return workspace_context.read()
 
     @router.get("/configuration/status")
     def configuration_status_read():
