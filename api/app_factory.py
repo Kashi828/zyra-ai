@@ -20,7 +20,6 @@ def create_app(db_path="data/zyra_security.sqlite3", runner=None):
     event_hub = RealtimeEventHub()
     bridge = register_production_command_routes(app, security, runner=runner)
 
-    # Publish command results into the unified realtime stream.
     original_execute = bridge.execute
 
     def execute_and_publish(request, now=None, command_id="remote"):
@@ -45,16 +44,11 @@ def create_app(db_path="data/zyra_security.sqlite3", runner=None):
     from api.voice_routes import register_voice_routes
     from core.zyra_runtime import ZyraRuntime
 
-    # Voice is a secure input adapter into the same goal pipeline. The default
-    # submit function is intentionally provider-neutral and can be replaced by
-    # the concrete workflow runtime when voice execution is enabled.
     runtime = ZyraRuntime()
     app.state.voice_runtime = runtime
     voice_stt = None
     voice_tts = None
 
-    # Local voice is opt-in so a fresh checkout never downloads models or
-    # initializes audio devices unexpectedly.
     if os.getenv("ZYRA_VOICE_STT", "").lower() == "local":
         try:
             from services.local_voice import build_local_stt
@@ -85,10 +79,16 @@ def create_app(db_path="data/zyra_security.sqlite3", runner=None):
         "tts": "local" if voice_tts else "unconfigured",
     }
     register_voice_routes(app, security, app.state.voice_gateway)
+
+    from desktop.product_config import ProductConfig
     from desktop.runtime_health import RuntimeHealthService
     from api.runtime_health_routes import register_runtime_health_routes
-    app.state.runtime_health = RuntimeHealthService()
+    configured_endpoint = ProductConfig().load().get(
+        "model_endpoint", "http://127.0.0.1:11434"
+    )
+    app.state.runtime_health = RuntimeHealthService(str(configured_endpoint))
     register_runtime_health_routes(app, app.state.runtime_health)
+
     app.state.security_context = security
     app.state.realtime_events = event_hub
     app.state.remote_bridge = bridge
@@ -99,9 +99,7 @@ def create_app(db_path="data/zyra_security.sqlite3", runner=None):
     from security.persistent_task_store import PersistentTaskStore
     task_store = PersistentTaskStore(db_path)
     app.state.task_store = task_store
-    app.state.task_controls = TaskControlRegistry(
-        app.state.task_realtime_bridge, task_store
-    )
+    app.state.task_controls = TaskControlRegistry(app.state.task_realtime_bridge, task_store)
     app.state.task_controls.bind_store(task_store)
     register_task_event_routes(
         app, app.state.task_realtime_bridge, app.state.task_controls, security.api_auth
