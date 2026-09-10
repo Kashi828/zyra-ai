@@ -17,7 +17,7 @@ class MainActivity : Activity() {
     private val bg = Color.rgb(8, 10, 16)
     private val panel = Color.rgb(18, 21, 31)
     private val panel2 = Color.rgb(24, 28, 40)
-    private val text = Color.rgb(244, 245, 250)
+    private val primaryText = Color.rgb(244, 245, 250)
     private val muted = Color.rgb(155, 162, 180)
     private val accent = Color.rgb(139, 92, 246)
     private val success = Color.rgb(72, 211, 137)
@@ -45,7 +45,7 @@ class MainActivity : Activity() {
         val brand = TextView(this).apply {
             text = "✦  ZYRA"
             textSize = 24f
-            setTextColor(text)
+            setTextColor(primaryText)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
         top.addView(brand, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -63,7 +63,7 @@ class MainActivity : Activity() {
         val greeting = TextView(this).apply {
             text = "Control your PC\nfrom anywhere."
             textSize = 30f
-            setTextColor(text)
+            setTextColor(primaryText)
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             setLineSpacing(0f, 1.05f)
         }
@@ -143,12 +143,10 @@ class MainActivity : Activity() {
     private fun action(title: String): Button = Button(this).apply {
         text = title
         textSize = 12f
-        textColorCompat()
+        setTextColor(primaryText)
         isAllCaps = false
         background = rounded(panel2, 14)
     }
-
-    private fun textColorCompat() { setTextColor(text) }
 
     private fun label(value: String, size: Float = 14f, color: Int = muted) = TextView(this).apply {
         text = value
