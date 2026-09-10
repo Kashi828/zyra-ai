@@ -17,15 +17,15 @@ def _create_session(client, secret, device_id="dev-test"):
         json={"device_id": device_id, "device_secret": secret.hex()},
     )
     assert response.status_code == 200
-    return response.json()["session_id"]
+    return response.json()
 
 
 def test_session_list_exposes_device_and_current_session(tmp_path):
     app = create_app(db_path=str(tmp_path / "security.sqlite3"))
     secret = _enroll(app.state.security_context.store)
     client = TestClient(app)
-    first = _create_session(client, secret)
-    second = _create_session(client, secret)
+    first = _create_session(client, secret)["session_id"]
+    second = _create_session(client, secret)["session_id"]
 
     response = client.post(
         "/v1/session/list",
@@ -47,9 +47,11 @@ def test_session_revoke_allows_only_same_device_target(tmp_path):
     first_secret = _enroll(app.state.security_context.store, "dev-one")
     second_secret = _enroll(app.state.security_context.store, "dev-two")
     client = TestClient(app)
-    first = _create_session(client, first_secret, "dev-one")
-    second = _create_session(client, first_secret, "dev-one")
-    foreign = _create_session(client, second_secret, "dev-two")
+    first_result = _create_session(client, first_secret, "dev-one")
+    first = first_result["session_id"]
+    second_result = _create_session(client, first_secret, "dev-one")
+    second = second_result["session_id"]
+    foreign = _create_session(client, second_secret, "dev-two")["session_id"]
 
     revoked = client.post(
         "/v1/session/revoke",
@@ -69,6 +71,13 @@ def test_session_revoke_allows_only_same_device_target(tmp_path):
     assert app.state.security_context.store.validate_session(second, "dev-one") is False
     assert app.state.security_context.store.validate_session(first, "dev-one") is True
 
+    # Per-session revocation must also invalidate that session's refresh path.
+    refresh_attempt = client.post(
+        "/v1/session/refresh",
+        json={"device_id": "dev-one", "refresh_token": second_result["refresh_token"]},
+    )
+    assert refresh_attempt.status_code == 401
+
     denied = client.post(
         "/v1/session/revoke",
         json={
@@ -85,8 +94,8 @@ def test_session_revoke_rejects_missing_and_inactive_targets(tmp_path):
     app = create_app(db_path=str(tmp_path / "security.sqlite3"))
     secret = _enroll(app.state.security_context.store)
     client = TestClient(app)
-    current = _create_session(client, secret)
-    target = _create_session(client, secret)
+    current = _create_session(client, secret)["session_id"]
+    target = _create_session(client, secret)["session_id"]
 
     missing = client.post(
         "/v1/session/revoke",
@@ -117,3 +126,26 @@ def test_session_revoke_rejects_missing_and_inactive_targets(tmp_path):
         },
     )
     assert inactive.status_code == 409
+
+
+def test_session_lifecycle_actions_are_audited_without_credentials(tmp_path):
+    app = create_app(db_path=str(tmp_path / "security.sqlite3"))
+    secret = _enroll(app.state.security_context.store)
+    client = TestClient(app)
+    created = _create_session(client, secret)
+    session_id = created["session_id"]
+
+    client.post(
+        "/v1/session/revoke",
+        json={
+            "device_id": "dev-test",
+            "session_id": session_id,
+            "target_session_id": session_id,
+        },
+    )
+
+    events = app.state.audit_log.recent_for_device("dev-test")
+    event_types = [event.event_type for event in events]
+    assert "session.created" in event_types
+    assert "session.revoked" in event_types
+    assert all(secret.hex() not in event.detail for event in events)
