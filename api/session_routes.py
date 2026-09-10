@@ -59,6 +59,29 @@ def register_session_routes(app, session_service, audit_log=None):
         except PermissionError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
 
+    @app.post("/v1/session/status")
+    def session_status(body: dict):
+        device_id, session_id = _authenticate_session(session_service, body)
+        device = session_service.store.get_device(device_id)
+        session = session_service.store.get_session(session_id)
+        if not device or not session:
+            raise HTTPException(status_code=401, detail="session context is unavailable")
+        return {
+            "ok": True,
+            "authenticated": True,
+            "device": {
+                "device_id": device["device_id"],
+                "capabilities": sorted(device["capabilities"]),
+                "revoked": bool(device["revoked"]),
+            },
+            "session": {
+                "session_id": session["session_id"],
+                "expires_at": int(session["expires_at"]),
+                "active": bool(session["active"]),
+                "current": True,
+            },
+        }
+
     @app.post("/v1/session/list")
     def list_sessions(body: dict):
         device_id, session_id = _authenticate_session(session_service, body)
