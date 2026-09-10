@@ -1,7 +1,9 @@
 try:
     from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
 except ImportError:  # pragma: no cover
     FastAPI = None
+    CORSMiddleware = None
 
 from api.production_security import build_production_security
 from api.production_command_routes import register_production_command_routes
@@ -16,6 +18,14 @@ def create_app(db_path="data/zyra_security.sqlite3", runner=None):
     if FastAPI is None:
         raise RuntimeError("FastAPI is required to create the API application")
     app = FastAPI(title="ZYRA AI")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["null"],
+        allow_origin_regex=r"^https?://(?:127\.0\.0\.1|localhost)(?::\d+)?$",
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     security = build_production_security(db_path)
     event_hub = RealtimeEventHub()
     bridge = register_production_command_routes(app, security, runner=runner)
