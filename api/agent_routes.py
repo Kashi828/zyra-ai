@@ -24,3 +24,11 @@ def register_agent_routes(app, security_context, runtime):
         if audit_log:
             audit_log.record("agent.stop", device_id, session_id)
         return {"ok": True, "stopped": state.stopped}
+
+    @app.post("/v1/agent/resume")
+    def resume_agent(body: dict):
+        device_id, session_id = authenticate(body)
+        state = stop.release()
+        if audit_log:
+            audit_log.record("agent.resume", device_id, session_id)
+        return {"ok": True, "stopped": state.stopped}
