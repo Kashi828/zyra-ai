@@ -57,7 +57,7 @@ def create_app(db_path=None, runner=None):
 
     bridge.execute = execute_and_publish
 
-    register_session_routes(app, security.sessions)
+    register_session_routes(app, security.sessions, audit_log)
     from api.health_routes import register_health_routes
     register_health_routes(app)
     from api.emergency_stop_routes import register_emergency_stop_routes
