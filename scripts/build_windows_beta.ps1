@@ -6,6 +6,8 @@ if (-not (Test-Path ".\package.json")) { throw "Run this script from the ZYRA AI
 if (-not $env:ZYRA_RELEASE_CHANNEL) { $env:ZYRA_RELEASE_CHANNEL = "beta" }
 npm run diagnostics
 if ($LASTEXITCODE -ne 0) { throw "Diagnostics failed." }
+npm run bundle:win-runtime
+if ($LASTEXITCODE -ne 0) { throw "Windows runtime bundling failed." }
 npm run build:win
 if ($LASTEXITCODE -ne 0) { throw "Electron Windows packaging failed." }
 Write-Host "Windows beta build completed. Check dist\ for the NSIS installer."
