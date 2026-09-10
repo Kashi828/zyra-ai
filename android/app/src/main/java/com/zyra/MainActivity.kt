@@ -125,10 +125,6 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             isAllCaps = false
             background = rounded(accent, 14)
-            setOnClickListener {
-                runOnPc = false
-                updateModeButtons(phoneButton, modeRow)
-            }
         }
         val pcButton = Button(this).apply {
             text = "On PC"
@@ -136,10 +132,14 @@ class MainActivity : Activity() {
             setTextColor(primaryText)
             isAllCaps = false
             background = rounded(panel2, 14)
-            setOnClickListener {
-                runOnPc = true
-                updateModeButtons(phoneButton, modeRow)
-            }
+        }
+        phoneButton.setOnClickListener {
+            runOnPc = false
+            updateModeButtons(phoneButton, modeRow)
+        }
+        pcButton.setOnClickListener {
+            runOnPc = true
+            updateModeButtons(phoneButton, modeRow)
         }
         modeRow.addView(phoneButton, LinearLayout.LayoutParams(0, dp(44), 1f))
         modeRow.addView(pcButton, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(8) })
@@ -178,7 +178,7 @@ class MainActivity : Activity() {
         connect.addView(label("CONNECT WINDOWS PC", 12f, muted))
         pcUrlInput = EditText(this).apply {
             hint = "http://192.168.x.x:8000"
-            text = prefs.getString("pc_url", "")
+            text = prefs.getString("pc_url", "") ?: ""
             textSize = 14f
             setTextColor(primaryText)
             setHintTextColor(muted)
