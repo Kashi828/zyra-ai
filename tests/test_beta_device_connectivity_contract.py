@@ -42,3 +42,12 @@ def test_android_pc_task_carries_authenticated_compatibility_fields():
     text = (ROOT / "android" / "MainActivity.kt").read_text(encoding="utf-8") if (ROOT / "android" / "MainActivity.kt").exists() else (ROOT / "android" / "app/src/main/java/com/zyra/MainActivity.kt").read_text(encoding="utf-8")
     assert '.put("auth_key", sessionId)' in text
     assert '.put("client_key", sessionId)' in text
+
+
+def test_session_status_is_authenticated_and_secret_free():
+    text = (ROOT / "api" / "session_routes.py").read_text(encoding="utf-8")
+    assert '@app.post("/v1/session/status")' in text
+    assert '_authenticate_session(session_service, body)' in text
+    assert '"device_id": device["device_id"]' in text
+    assert '"session_id": session["session_id"]' in text
+    assert "device_secret" not in text.split('@app.post("/v1/session/status")', 1)[1].split('@app.post("/v1/session/list")', 1)[0]
