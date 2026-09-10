@@ -9,6 +9,8 @@ from api.production_security import build_production_security
 from api.production_command_routes import register_production_command_routes
 from api.session_routes import register_session_routes
 from api.realtime_routes import register_realtime_routes
+from api.runtime_routes import register_runtime_routes
+from api.setup_routes import build_setup_router
 from core.realtime_events import RealtimeEventHub
 from core.voice import VoiceGateway
 import os
@@ -58,6 +60,8 @@ def create_app(db_path=None, runner=None):
     bridge.execute = execute_and_publish
 
     register_session_routes(app, security.sessions, audit_log)
+    from api.local_bootstrap_routes import register_local_bootstrap_routes
+    register_local_bootstrap_routes(app, security)
     from api.health_routes import register_health_routes
     register_health_routes(app)
     from api.emergency_stop_routes import register_emergency_stop_routes
@@ -65,10 +69,14 @@ def create_app(db_path=None, runner=None):
     from api.audit_routes import register_audit_routes
     register_audit_routes(app, security, audit_log)
     register_realtime_routes(app, security, event_hub)
+    register_setup = app.include_router
+    register_setup(build_setup_router())
+
     from api.voice_routes import register_voice_routes
     from core.zyra_runtime import ZyraRuntime
 
-    runtime = ZyraRuntime()
+    runtime = ZyraRuntime(command_bridge=bridge)
+    runtime.realtime_hub = event_hub
     app.state.voice_runtime = runtime
     voice_stt = None
     voice_tts = None
@@ -112,6 +120,7 @@ def create_app(db_path=None, runner=None):
     )
     app.state.runtime_health = RuntimeHealthService(str(configured_endpoint))
     register_runtime_health_routes(app, app.state.runtime_health)
+    register_runtime_routes(app, runtime, security.api_auth)
 
     app.state.security_context = security
     app.state.realtime_events = event_hub
