@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import os
 import subprocess
-import sys
+
 
 @dataclass(frozen=True)
 class ToolSpec:
@@ -9,13 +9,14 @@ class ToolSpec:
     capability: str
     confirmation_required: bool
 
+
 class WindowsCommandRegistry:
     def __init__(self, runner=None):
         self._runner = runner or self._default_runner
         self._tools = {
-            "open_app": ToolSpec("open_app", "pc.apps", False),
-            "open_folder": ToolSpec("open_folder", "pc.files", False),
-            "open_url": ToolSpec("open_url", "pc.web", False),
+            "open_app": ToolSpec("open_app", "windows.apps", False),
+            "open_folder": ToolSpec("open_folder", "windows.files.read", False),
+            "open_url": ToolSpec("open_url", "windows.browser", False),
         }
 
     @staticmethod
@@ -30,7 +31,7 @@ class WindowsCommandRegistry:
             path = os.path.abspath(str(payload.get("path", "")))
             if not os.path.isdir(path):
                 raise FileNotFoundError("folder not found")
-            os.startfile(path)  # Windows-only runtime action
+            os.startfile(path)
             return f"opened_folder:{path}"
         if action == "open_url":
             import webbrowser
