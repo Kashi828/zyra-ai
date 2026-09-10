@@ -44,22 +44,23 @@ class PersistentDeviceStore:
             """)
 
     @staticmethod
-    def hash_secret(secret: bytes) -> str:
+    def _hash_secret(secret: bytes) -> str:
         return hashlib.sha256(secret).hexdigest()
 
-    def enroll_device(self, device_id, secret: bytes, capabilities):
-        if not device_id or len(secret) < 32:
+    def enroll_device(self, device_id: str, secret: bytes, capabilities):
+        if not device_id or not isinstance(secret, (bytes, bytearray)) or len(secret) < 32:
             raise ValueError("invalid device enrollment")
-        caps = ",".join(sorted(set(capabilities)))
+        now = int(time.time())
+        caps = "\n".join(sorted(set(str(c) for c in capabilities)))
         with self._lock, self._connect() as db:
             db.execute(
                 "INSERT OR REPLACE INTO trusted_devices "
                 "(device_id, secret_hash, capabilities, revoked, created_at) "
                 "VALUES (?, ?, ?, 0, ?)",
-                (device_id, self.hash_secret(secret), caps, int(time.time())),
+                (device_id, self._hash_secret(bytes(secret)), caps, now),
             )
 
-    def get_device(self, device_id):
+    def get_device(self, device_id: str):
         with self._connect() as db:
             row = db.execute(
                 "SELECT device_id, secret_hash, capabilities, revoked, created_at "
@@ -71,18 +72,69 @@ class PersistentDeviceStore:
         return {
             "device_id": row[0],
             "secret_hash": row[1],
-            "capabilities": frozenset(filter(None, row[2].split(","))),
+            "capabilities": frozenset(filter(None, row[2].split("\n"))),
             "revoked": bool(row[3]),
             "created_at": row[4],
         }
 
-    def verify_secret(self, device_id, secret: bytes) -> bool:
-        item = self.get_device(device_id)
-        if not item or item["revoked"]:
+    def verify_secret(self, device_id: str, secret: bytes) -> bool:
+        device = self.get_device(device_id)
+        if not device or device["revoked"]:
             return False
-        return hmac.compare_digest(item["secret_hash"], self.hash_secret(secret))
+        if not isinstance(secret, (bytes, bytearray)):
+            return False
+        return hmac.compare_digest(self._hash_secret(bytes(secret)), device["secret_hash"])
 
-    def revoke_device(self, device_id):
+    def issue_session(self, device_id: str, session_id: str, ttl_seconds: int = 900):
+        if not device_id or not session_id:
+            raise ValueError("invalid session")
+        now = int(time.time())
+        expires_at = now + int(ttl_seconds)
+        with self._lock, self._connect() as db:
+            db.execute(
+                "INSERT INTO device_sessions "
+                "(session_id, device_id, expires_at, revoked, created_at) "
+                "VALUES (?, ?, ?, 0, ?)",
+                (session_id, device_id, expires_at, now),
+            )
+        return expires_at
+
+    def get_session_expires_at(self, session_id: str):
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT expires_at FROM device_sessions WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+        if not row:
+            raise PermissionError("session not found")
+        return int(row[0])
+
+    def validate_session(self, session_id: str, device_id: str) -> bool:
+        now = int(time.time())
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT expires_at, revoked FROM device_sessions "
+                "WHERE session_id=? AND device_id=?",
+                (session_id, device_id),
+            ).fetchone()
+        return bool(row and not row[1] and row[0] > now)
+
+    def revoke_session(self, session_id: str):
+        with self._lock, self._connect() as db:
+            db.execute(
+                "UPDATE device_sessions SET revoked=1 WHERE session_id=?",
+                (session_id,),
+            )
+
+    def revoke_device_sessions(self, device_id: str):
+        with self._lock, self._connect() as db:
+            db.execute(
+                "UPDATE device_sessions SET revoked=1 "
+                "WHERE device_id=? AND revoked=0",
+                (device_id,),
+            )
+
+    def revoke_device(self, device_id: str):
         with self._lock, self._connect() as db:
             db.execute(
                 "UPDATE trusted_devices SET revoked=1 WHERE device_id=?",
@@ -93,97 +145,5 @@ class PersistentDeviceStore:
                 (device_id,),
             )
 
-    def issue_session(self, device_id, session_id, ttl_seconds):
-        item = self.get_device(device_id)
-        if not item or item["revoked"]:
-            raise PermissionError("device is not trusted")
-        now = int(time.time())
-        expires = now + int(ttl_seconds)
-        with self._lock, self._connect() as db:
-            db.execute(
-                "INSERT INTO device_sessions "
-                "(session_id, device_id, expires_at, revoked, created_at) "
-                "VALUES (?, ?, ?, 0, ?)",
-                (session_id, device_id, expires, now),
-            )
-        return expires
-
-    def rotate_session(self, session_id, ttl_seconds):
-        """Atomically replace a valid session with a fresh session identifier."""
-        if not session_id:
-            raise PermissionError("missing session")
-        ttl = int(ttl_seconds)
-        if ttl <= 0:
-            raise ValueError("session TTL must be positive")
-        now = int(time.time())
-        new_session_id = "sess_" + secrets.token_urlsafe(18)
-        with self._lock, self._connect() as db:
-            row = db.execute(
-                "SELECT device_id, expires_at, revoked FROM device_sessions WHERE session_id=?",
-                (session_id,),
-            ).fetchone()
-            if not row:
-                raise PermissionError("session is invalid or expired")
-            device_id, expires_at, revoked = row
-            if revoked or expires_at <= now:
-                raise PermissionError("session is invalid or expired")
-            device = db.execute(
-                "SELECT revoked FROM trusted_devices WHERE device_id=?",
-                (device_id,),
-            ).fetchone()
-            if not device or device[0]:
-                raise PermissionError("device is not trusted")
-            new_expires = now + ttl
-            db.execute(
-                "UPDATE device_sessions SET revoked=1 WHERE session_id=? AND revoked=0",
-                (session_id,),
-            )
-            db.execute(
-                "INSERT INTO device_sessions "
-                "(session_id, device_id, expires_at, revoked, created_at) "
-                "VALUES (?, ?, ?, 0, ?)",
-                (new_session_id, device_id, new_expires, now),
-            )
-        return new_session_id, device_id, new_expires
-
-    def validate_session(self, session_id, device_id=None):
-        now = int(time.time())
-        with self._connect() as db:
-            row = db.execute(
-                "SELECT session_id, device_id, expires_at, revoked "
-                "FROM device_sessions WHERE session_id=?",
-                (session_id,),
-            ).fetchone()
-        if not row:
-            return False
-        if device_id is not None and row[1] != device_id:
-            return False
-        if row[3] or row[2] <= now:
-            return False
-        device = self.get_device(row[1])
-        if not device or device["revoked"]:
-            return False
-        return True
-
-    def revoke_session(self, session_id):
-        with self._lock, self._connect() as db:
-            db.execute(
-                "UPDATE device_sessions SET revoked=1 WHERE session_id=?",
-                (session_id,),
-            )
-
-    def revoke_device_sessions(self, device_id):
-        """Revoke every active session for a device without changing trust state."""
-        with self._lock, self._connect() as db:
-            db.execute(
-                "UPDATE device_sessions SET revoked=1 WHERE device_id=? AND revoked=0",
-                (device_id,),
-            )
-
-    def purge_expired_sessions(self):
-        now = int(time.time())
-        with self._lock, self._connect() as db:
-            db.execute(
-                "DELETE FROM device_sessions WHERE expires_at <= ? OR revoked=1",
-                (now,),
-            )
+    def issue_session_id(self):
+        return "sess_" + secrets.token_urlsafe(18)
