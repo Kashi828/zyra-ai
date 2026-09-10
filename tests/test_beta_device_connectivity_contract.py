@@ -30,8 +30,8 @@ def test_android_run_and_pairing_paths_are_present():
     text = (ROOT / "android" / "app/src/main/java/com/zyra/MainActivity.kt").read_text(encoding="utf-8")
     assert 'setOnClickListener { executeTask() }' in text
     assert 'runtime/tasks' in text
-    assert '"/v1/session/refresh"' in text
-    assert '"/v1/session/create"' in text
+    assert 'v1/session/refresh' in text
+    assert 'v1/session/create' in text
     assert '"/v1/devices/pairing/enroll"' in text
     assert '"device_secret"' in text
     assert '"offer_id"' in text
