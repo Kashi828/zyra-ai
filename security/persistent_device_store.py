@@ -109,6 +109,25 @@ class PersistentDeviceStore:
             raise PermissionError("session not found")
         return int(row[0])
 
+    def list_sessions(self, device_id: str, include_inactive: bool = False):
+        query = (
+            "SELECT session_id, expires_at, revoked, created_at "
+            "FROM device_sessions WHERE device_id=? "
+        )
+        params = [device_id]
+        if not include_inactive:
+            query += "AND revoked=0 AND expires_at>? "
+            params.append(int(time.time()))
+        query += "ORDER BY created_at DESC"
+        with self._connect() as db:
+            rows = db.execute(query, tuple(params)).fetchall()
+        return tuple({
+            "session_id": row[0],
+            "expires_at": int(row[1]),
+            "revoked": bool(row[2]),
+            "created_at": int(row[3]),
+        } for row in rows)
+
     def validate_session(self, session_id: str, device_id: str) -> bool:
         now = int(time.time())
         with self._connect() as db:
