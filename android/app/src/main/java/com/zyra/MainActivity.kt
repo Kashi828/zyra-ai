@@ -1,14 +1,11 @@
 package com.zyra
 
 import android.app.Activity
-import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -27,13 +24,14 @@ import java.net.URI
 import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
-    private val bg = Color.rgb(8, 10, 16)
-    private val panel = Color.rgb(18, 21, 31)
-    private val panel2 = Color.rgb(24, 28, 40)
-    private val inputBg = Color.rgb(29, 33, 46)
-    private val primaryText = Color.rgb(244, 245, 250)
-    private val muted = Color.rgb(155, 162, 180)
+    private val bg = Color.rgb(7, 9, 15)
+    private val panel = Color.rgb(17, 20, 30)
+    private val panel2 = Color.rgb(25, 29, 42)
+    private val inputBg = Color.rgb(28, 32, 45)
+    private val primaryText = Color.rgb(246, 247, 251)
+    private val muted = Color.rgb(151, 159, 179)
     private val accent = Color.rgb(139, 92, 246)
+    private val accentSoft = Color.rgb(49, 38, 79)
     private val success = Color.rgb(72, 211, 137)
     private val warning = Color.rgb(245, 190, 80)
     private val prefs by lazy { getSharedPreferences("zyra_phone", MODE_PRIVATE) }
@@ -59,10 +57,11 @@ class MainActivity : Activity() {
         val scroll = ScrollView(this).apply {
             setBackgroundColor(bg)
             clipToPadding = false
+            isFillViewport = true
         }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(28))
+            setPadding(dp(20), dp(16), dp(20), dp(30))
         }
         scroll.addView(root)
 
@@ -74,91 +73,62 @@ class MainActivity : Activity() {
             text = "✦  ZYRA"
             textSize = 24f
             setTextColor(primaryText)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            typeface = Typeface.DEFAULT_BOLD
+            letterSpacing = .02f
         }
         top.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
-        modeLabel = TextView(this).apply {
-            text = "●  Phone active"
-            textSize = 12f
-            setTextColor(success)
-            setPadding(dp(10), dp(7), dp(10), dp(7))
-            background = rounded(panel2, 30)
-        }
+        modeLabel = pill("●  Phone active", success)
         top.addView(modeLabel)
         root.addView(top)
 
-        root.addView(space(22))
+        root.addView(space(28))
         val greeting = TextView(this).apply {
             text = "Your agent.\nOn your phone."
             textSize = 32f
             setTextColor(primaryText)
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            setLineSpacing(0f, 1.03f)
+            typeface = Typeface.DEFAULT_BOLD
+            setLineSpacing(0f, 1.02f)
         }
         root.addView(greeting)
-        root.addView(label("Run ZYRA locally, or hand work to your trusted PC.", 14f, muted),
-            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        root.addView(label("A calm command center for your phone and trusted Windows PC.", 14f, muted),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(9) })
 
-        root.addView(space(20))
+        root.addView(space(22))
         val taskCard = card()
-        taskCard.addView(label("ASK ZYRA", 12f, accent))
+        taskCard.addView(label("ASK ZYRA", 11f, accent))
         taskInput = EditText(this).apply {
-            hint = "Tell ZYRA what to do..."
+            hint = "What should ZYRA do?"
             textSize = 16f
             setTextColor(primaryText)
             setHintTextColor(muted)
             setPadding(dp(16), dp(14), dp(16), dp(14))
-            minLines = 2
+            minLines = 3
             maxLines = 5
             gravity = Gravity.TOP
             background = rounded(inputBg, 16)
         }
-        taskCard.addView(taskInput, LinearLayout.LayoutParams(-1, dp(96)).apply { topMargin = dp(10) })
+        taskCard.addView(taskInput, LinearLayout.LayoutParams(-1, dp(104)).apply { topMargin = dp(11) })
 
         val modeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val phoneButton = Button(this).apply {
-            text = "On phone"
-            textSize = 12f
-            setTextColor(Color.WHITE)
-            isAllCaps = false
-            background = rounded(accent, 14)
-        }
-        val pcButton = Button(this).apply {
-            text = "On PC"
-            textSize = 12f
-            setTextColor(primaryText)
-            isAllCaps = false
-            background = rounded(panel2, 14)
-        }
-        phoneButton.setOnClickListener {
-            runOnPc = false
-            updateModeButtons(phoneButton, modeRow)
-        }
-        pcButton.setOnClickListener {
-            runOnPc = true
-            updateModeButtons(phoneButton, modeRow)
-        }
-        modeRow.addView(phoneButton, LinearLayout.LayoutParams(0, dp(44), 1f))
-        modeRow.addView(pcButton, LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(8) })
-        taskCard.addView(modeRow, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(10) })
+        val phoneButton = actionButton("On phone", true)
+        val pcButton = actionButton("On PC", false)
+        phoneButton.setOnClickListener { runOnPc = false; updateModeButtons(phoneButton, modeRow) }
+        pcButton.setOnClickListener { runOnPc = true; updateModeButtons(phoneButton, modeRow) }
+        modeRow.addView(phoneButton, LinearLayout.LayoutParams(0, dp(46), 1f))
+        modeRow.addView(pcButton, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginStart = dp(8) })
+        taskCard.addView(modeRow, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(11) })
 
-        val run = Button(this).apply {
-            text = "Run with ZYRA"
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            background = rounded(accent, 16)
-            isAllCaps = false
-            setOnClickListener { executeTask() }
-        }
-        taskCard.addView(run, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(10) })
+        val run = primaryButton("Run with ZYRA")
+        run.setOnClickListener { executeTask() }
+        taskCard.addView(run, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(11) })
         root.addView(taskCard)
 
         root.addView(space(14))
         val status = card()
-        status.addView(label("ZYRA ECOSYSTEM", 12f, muted))
+        status.addView(label("ECOSYSTEM", 11f, muted))
         status.addView(row("Phone agent", "Active", success))
         pcState = label("Not connected", 14f, muted)
         val pcRow = LinearLayout(this).apply {
@@ -175,7 +145,9 @@ class MainActivity : Activity() {
 
         root.addView(space(14))
         val connect = card()
-        connect.addView(label("CONNECT WINDOWS PC", 12f, muted))
+        connect.addView(label("CONNECT WINDOWS PC", 11f, muted))
+        connect.addView(label("Use a private-network address. ZYRA blocks public hosts here.", 12f, muted),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
         pcUrlInput = EditText(this).apply {
             hint = "http://192.168.x.x:8000"
             setText(prefs.getString("pc_url", "") ?: "")
@@ -186,31 +158,25 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(12), dp(14), dp(12))
             background = rounded(inputBg, 14)
         }
-        connect.addView(pcUrlInput, LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10) })
-        val connectButton = Button(this).apply {
-            text = "Connect & check"
-            textSize = 13f
-            setTextColor(primaryText)
-            isAllCaps = false
-            background = rounded(panel2, 14)
-            setOnClickListener { connectToPc() }
-        }
+        connect.addView(pcUrlInput, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(10) })
+        val connectButton = secondaryButton("Connect & check")
+        connectButton.setOnClickListener { connectToPc() }
         connect.addView(connectButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8) })
         root.addView(connect)
 
         root.addView(space(14))
         val logCard = card()
-        logCard.addView(label("ACTIVITY", 12f, muted))
-        activityLog = label("Ready. Phone agent is local-first.", 13f, primaryText)
-        activityLog.setPadding(0, dp(10), 0, 0)
-        logCard.addView(activityLog)
+        logCard.addView(label("ACTIVITY", 11f, muted))
+        activityLog = label("Ready · phone agent is local-first.", 13f, primaryText)
+        activityLog.setLineSpacing(0f, 1.15f)
+        logCard.addView(activityLog, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         root.addView(logCard)
 
-        root.addView(space(22))
+        root.addView(space(26))
         val footer = TextView(this).apply {
-            text = "ZYRA AI  •  Phone + Windows ecosystem  •  v0.1.0-beta.2"
-            textSize = 12f
-            setTextColor(Color.rgb(105, 112, 130))
+            text = "ZYRA AI  •  Phone + Windows ecosystem  •  beta.2"
+            textSize = 11f
+            setTextColor(Color.rgb(100, 108, 126))
             gravity = Gravity.CENTER
         }
         root.addView(footer)
@@ -221,43 +187,41 @@ class MainActivity : Activity() {
         val task = taskInput.text.toString().trim()
         if (task.isEmpty()) {
             activityLog.text = "Enter a task first."
+            taskInput.requestFocus()
             return
         }
-        if (runOnPc) {
-            val base = pcUrlInput.text.toString().trim().trimEnd('/')
-            if (!isAllowedPcUrl(base)) {
-                activityLog.text = "Use a local/LAN Windows address (127.0.0.1, 10.x, 172.16–31.x, 192.168.x, or .local)."
-                return
+        if (!runOnPc) {
+            activityLog.text = "Phone agent received the task."
+            return
+        }
+        val base = pcUrlInput.text.toString().trim().trimEnd('/')
+        if (!isAllowedPcUrl(base)) {
+            activityLog.text = "Use a local/LAN Windows address (127.0.0.1, 10.x, 172.16–31.x, 192.168.x, or .local)."
+            return
+        }
+        activityLog.text = "Sending to trusted Windows agent…"
+        val body = JSONObject()
+            .put("goal", task)
+            .put("context", JSONObject().put("source", "android"))
+            .toString().toRequestBody(jsonType)
+        val request = Request.Builder().url("$base/v1/runtime/tasks").post(body).build()
+        http.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread { activityLog.text = "PC connection failed: ${e.message ?: "unknown error"}" }
             }
-            activityLog.text = "Sending to trusted Windows agent…"
-            val body = JSONObject()
-                .put("goal", task)
-                .put("context", JSONObject().put("source", "android"))
-                .toString()
-                .toRequestBody(jsonType)
-            val request = Request.Builder().url("$base/v1/runtime/tasks").post(body).build()
-            http.newCall(request).enqueue(object : okhttp3.Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    runOnUiThread { activityLog.text = "PC connection failed: ${e.message ?: "unknown error"}" }
-                }
-                override fun onResponse(call: Call, response: Response) {
-                    response.use {
-                        runOnUiThread {
-                            if (response.isSuccessful) {
-                                prefs.edit().putString("pc_url", base).apply()
-                                pcState.text = "Connected"
-                                pcState.setTextColor(success)
-                                activityLog.text = "Task handed to the Windows agent."
-                            } else {
-                                activityLog.text = "Windows agent rejected the task (${response.code})."
-                            }
-                        }
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    runOnUiThread {
+                        if (response.isSuccessful) {
+                            prefs.edit().putString("pc_url", base).apply()
+                            pcState.text = "Connected"
+                            pcState.setTextColor(success)
+                            activityLog.text = "Task handed to the Windows agent."
+                        } else activityLog.text = "Windows agent rejected the task (${response.code})."
                     }
                 }
-            })
-        } else {
-            activityLog.text = "Phone agent received the task."
-        }
+            }
+        })
     }
 
     private fun connectToPc() {
@@ -295,45 +259,77 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun isAllowedPcUrl(value: String): Boolean {
-        return try {
-            val uri = URI(value)
-            val host = uri.host ?: return false
-            val schemeOk = uri.scheme == "http" || uri.scheme == "https"
-            val localHost = host == "localhost" || host == "127.0.0.1" || host.endsWith(".local")
-            val privateIp = host.matches(Regex("^10\\..*")) ||
-                host.matches(Regex("^192\\.168\\..*")) ||
-                host.matches(Regex("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*"))
-            schemeOk && (localHost || privateIp)
-        } catch (_: Exception) {
-            false
-        }
-    }
+    private fun isAllowedPcUrl(value: String): Boolean = try {
+        val uri = URI(value)
+        val host = uri.host ?: return false
+        val schemeOk = uri.scheme == "http" || uri.scheme == "https"
+        val localHost = host == "localhost" || host == "127.0.0.1" || host.endsWith(".local")
+        val privateIp = host.matches(Regex("^10\\..*")) || host.matches(Regex("^192\\.168\\..*")) ||
+            host.matches(Regex("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*"))
+        schemeOk && (localHost || privateIp)
+    } catch (_: Exception) { false }
 
     private fun updateModeButtons(phoneButton: Button, modeRow: LinearLayout) {
-        val phone = phoneButton
         val pc = modeRow.getChildAt(1) as? Button ?: return
-        phone.background = rounded(if (!runOnPc) accent else panel2, 14)
+        phoneButton.background = rounded(if (!runOnPc) accent else panel2, 14)
         pc.background = rounded(if (runOnPc) accent else panel2, 14)
-        phone.setTextColor(if (!runOnPc) Color.WHITE else primaryText)
+        phoneButton.setTextColor(if (!runOnPc) Color.WHITE else primaryText)
         pc.setTextColor(if (runOnPc) Color.WHITE else primaryText)
         modeLabel.text = if (runOnPc) "●  PC selected" else "●  Phone active"
         modeLabel.setTextColor(if (runOnPc) warning else success)
     }
 
-    private fun card(): LinearLayout = LinearLayout(this).apply {
+    private fun card() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(16), dp(16), dp(16), dp(16))
         background = rounded(panel, 20)
     }
 
-    private fun label(textValue: String, size: Float, color: Int): TextView = TextView(this).apply {
+    private fun actionButton(textValue: String, selected: Boolean) = Button(this).apply {
+        text = textValue
+        textSize = 13f
+        setTextColor(if (selected) Color.WHITE else primaryText)
+        isAllCaps = false
+        minHeight = 0
+        stateListAnimator = null
+        background = rounded(if (selected) accent else panel2, 14)
+    }
+
+    private fun primaryButton(textValue: String) = Button(this).apply {
+        text = textValue
+        textSize = 14f
+        setTextColor(Color.WHITE)
+        isAllCaps = false
+        minHeight = 0
+        stateListAnimator = null
+        background = rounded(accent, 16)
+    }
+
+    private fun secondaryButton(textValue: String) = Button(this).apply {
+        text = textValue
+        textSize = 13f
+        setTextColor(primaryText)
+        isAllCaps = false
+        minHeight = 0
+        stateListAnimator = null
+        background = rounded(panel2, 14)
+    }
+
+    private fun pill(textValue: String, color: Int) = TextView(this).apply {
+        text = textValue
+        textSize = 12f
+        setTextColor(color)
+        setPadding(dp(11), dp(7), dp(11), dp(7))
+        background = rounded(accentSoft, 30)
+    }
+
+    private fun label(textValue: String, size: Float, color: Int) = TextView(this).apply {
         text = textValue
         textSize = size
         setTextColor(color)
     }
 
-    private fun row(name: String, value: String, color: Int): LinearLayout = LinearLayout(this).apply {
+    private fun row(name: String, value: String, color: Int) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(0, dp(10), 0, dp(2))
@@ -341,11 +337,9 @@ class MainActivity : Activity() {
         addView(label(value, 14f, color))
     }
 
-    private fun space(height: Int): Space = Space(this).apply {
-        layoutParams = LinearLayout.LayoutParams(1, dp(height))
-    }
+    private fun space(height: Int) = Space(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(height)) }
 
-    private fun rounded(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply {
+    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
         setColor(color)
         cornerRadius = dp(radius).toFloat()
     }
