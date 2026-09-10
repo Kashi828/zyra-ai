@@ -32,12 +32,78 @@
 </div>
 <aside><div class="brand">✦ ZYRA</div><nav><button data-section="assistant" class="active">Assistant</button><button data-section="tasks">Tasks</button><button data-section="devices">Devices</button><button data-section="permissions">Permissions</button><button data-section="settings">Settings</button></nav><div class="status"><span></span> <b>Local AI</b> · <em id="deviceSummary">Checking…</em></div></aside>
 <main><header><div><h1>ZYRA AI</h1><p>Your AI agent for PC, web and connected devices.</p></div><button id="stopAgent" class="stop">Stop Agent</button></header>
-<section id="page-assistant" class="page visible"><div class="hero"><div class="card"><h2>What should ZYRA do?</h2><textarea id="goal" placeholder="Tell ZYRA your goal..."></textarea><div class="actions"><button id="runTask" class="primary">Run Task</button><button>Attach</button><button id="voiceButton" class="voice-btn" title="Start voice input">🎙 Voice</button></div><div id="voicePanel" class="voice-panel hidden"><div class="voice-head"><div><b>Voice input</b><small id="voiceStatus">Ready to listen</small></div><select id="voiceLanguage" aria-label="Voice language"><option value="en-IN">English (India)</option><option value="en-US">English (US)</option><option value="hi-IN">Hindi</option><option value="kn-IN">Kannada</option></select></div><div class="voice-meter"><span id="voiceMeter"></span></div><div class="voice-actions"><button id="voiceStart" class="primary">Start Listening</button><button id="voiceStop" disabled>Stop</button></div><small class="voice-note">Uses the local microphone path when available. ZYRA sends captured audio only to the authenticated local voice service; the transcript is inserted into the normal task box before execution.</small></div></div><div class="card security"><h3>Security</h3><div class="row"><span>Local-first mode</span><b>ON</b></div><div class="row"><span>Remote access</span><b>OFF</b></div><div class="row"><span>Sensitive confirmations</span><b>ON</b></div></div></div><div class="card"><h3>Live activity</h3><div id="activity" class="activity"><span>✓</span> Ready for your next task</div></div></section>
+<section id="page-assistant" class="page visible"><div class="hero"><div class="card"><h2>What should ZYRA do?</h2><textarea id="goal" placeholder="Try: Open calculator · Open https://example.com · Open folder C:\\Users\\Public"></textarea><div class="actions"><button id="runTask" class="primary">Run Task</button><button>Attach</button><button id="voiceButton" class="voice-btn" title="Start voice input">🎙 Voice</button></div><div id="voicePanel" class="voice-panel hidden"><div class="voice-head"><div><b>Voice input</b><small id="voiceStatus">Ready to listen</small></div><select id="voiceLanguage" aria-label="Voice language"><option value="en-IN">English (India)</option><option value="en-US">English (US)</option><option value="hi-IN">Hindi</option><option value="kn-IN">Kannada</option></select></div><div class="voice-meter"><span id="voiceMeter"></span></div><div class="voice-actions"><button id="voiceStart" class="primary">Start Listening</button><button id="voiceStop" disabled>Stop</button></div><small class="voice-note">Voice input stays inside the existing ZYRA task workflow and does not bypass authorization.</small></div></div><div class="card security"><h3>Security</h3><div class="row"><span>Local-first mode</span><b>ON</b></div><div class="row"><span>Remote access</span><b>LAN / authenticated</b></div><div class="row"><span>Sensitive confirmations</span><b>ON</b></div></div></div><div class="card"><h3>Live activity</h3><div id="activity" class="activity"><span>✓</span> Ready for your next task</div></div></section>
 <section id="page-tasks" class="page"><div class="card"><h2>Tasks</h2><div id="taskList"></div></div></section>
-<section id="page-devices" class="page"><div class="card"><h2>Pair a device</h2><p>Start a short-lived secure pairing offer and confirm the PC identity on Android.</p><button id="pairDevice" class="primary">Start Secure Pairing</button><div id="pairStatus" class="activity" style="margin-top:14px">No pairing session active.</div></div><div class="card"><h2>Devices</h2><div id="deviceList"></div></div></section>
-<section id="page-permissions" class="page"><div class="card"><h2>Permissions</h2><div class="list-item"><div><b>PC Apps</b><small>Open authorized applications</small></div><strong class="online">ENABLED</strong></div><div class="list-item"><div><b>PC Files</b><small>Read and manage authorized files</small></div><strong class="online">ENABLED</strong></div><div class="list-item"><div><b>PC Web</b><small>Open and control approved web actions</small></div><strong class="online">ENABLED</strong></div><div class="list-item"><div><b>Sensitive actions</b><small>Require explicit confirmation</small></div><strong class="online">ON</strong></div></div></section>
-<section id="page-settings" class="page"><div class="card"><h2>Settings</h2><div class="setting"><div><b>Local-first mode</b><small>Prefer local AI and local services</small></div><label class="toggle"><input type="checkbox" checked disabled><span></span></label></div><div class="setting"><div><b>Remote access</b><small>Allow remote device control</small></div><label class="toggle"><input type="checkbox" disabled><span></span></label></div><div class="setting"><div><b>Notifications</b><small>Task and device notifications</small></div><label class="toggle"><input type="checkbox" checked disabled><span></span></label></div></div></section>
+<section id="page-devices" class="page"><div class="card"><h2>Pair a device</h2><p>Generate a short-lived code on Windows, then enter it on Android.</p><button id="pairDevice" class="primary">Generate Pairing Code</button><div id="pairStatus" class="activity" style="margin-top:14px">No pairing code generated.</div></div><div class="card"><h2>Devices</h2><div id="deviceList"></div></div></section>
+<section id="page-permissions" class="page"><div class="card"><h2>Permissions</h2><div class="list-item"><div><b>PC Apps</b><small>Open authorized applications</small></div><strong class="online">ENABLED</strong></div><div class="list-item"><div><b>PC Files</b><small>Read approved folders</small></div><strong class="online">ENABLED</strong></div><div class="list-item"><div><b>PC Web</b><small>Open approved web destinations</small></div><strong class="online">ENABLED</strong></div><div class="list-item"><div><b>Sensitive actions</b><small>Require explicit confirmation</small></div><strong class="online">ON</strong></div></div></section>
+<section id="page-settings" class="page"><div class="card"><h2>Settings</h2><div class="setting"><div><b>Local-first mode</b><small>Prefer local AI and local services</small></div><label class="toggle"><input type="checkbox" checked disabled><span></span></label></div><div class="setting"><div><b>LAN device access</b><small>Authenticated Android-to-Windows access on private networks</small></div><label class="toggle"><input type="checkbox" checked disabled><span></span></label></div></div></section>
 </main>
-<script>(()=>{const nativeFetch=window.fetch.bind(window),API_ORIGIN="http://127.0.0.1:8000";window.zyraApiOrigin=API_ORIGIN;window.fetch=(input,init)=>{if(typeof input==="string"&&input.startsWith("/"))return nativeFetch(`${API_ORIGIN}${input}`,init);if(input instanceof URL&&input.pathname.startsWith("/"))return nativeFetch(`${API_ORIGIN}${input.pathname}${input.search}`,init);return nativeFetch(input,init);};})();</script>
+<script>
+(() => {
+  const nativeFetch = window.fetch.bind(window);
+  const API_ORIGIN = "http://127.0.0.1:8000";
+  window.zyraApiOrigin = API_ORIGIN;
+  const publicPaths = ["/health", "/v1/setup/", "/v1/system/", "/v1/local/bootstrap"];
+  const isPublic = path => publicPaths.some(prefix => path.startsWith(prefix));
+
+  window.fetch = async (input, init = {}) => {
+    let url = input instanceof URL ? input.toString() : String(input);
+    if (url.startsWith("/")) url = `${API_ORIGIN}${url}`;
+    const parsed = new URL(url);
+    const path = parsed.pathname;
+    const method = String(init.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+    const next = {...init};
+    if (input instanceof Request && !next.body) next.body = input.body;
+
+    if (method !== "GET" && !isPublic(path) && window.zyraDesktopBridge?.getAuthContext) {
+      try {
+        const auth = await window.zyraDesktopBridge.getAuthContext();
+        const headers = new Headers(next.headers || (input instanceof Request ? input.headers : undefined));
+        const contentType = headers.get("Content-Type") || "";
+        if (contentType.includes("application/json") && typeof next.body === "string") {
+          const body = JSON.parse(next.body || "{}");
+          body.device_id = body.device_id || auth.device_id;
+          body.session_id = body.session_id || auth.session_id;
+          body.auth_key = body.auth_key || auth.session_id;
+          body.client_key = body.client_key || auth.session_id;
+          next.body = JSON.stringify(body);
+          next.headers = headers;
+          headers.set("Content-Type", "application/json");
+        }
+      } catch (error) {
+        throw new Error(`ZYRA authentication unavailable: ${error.message || error}`);
+      }
+    }
+    return nativeFetch(url, next);
+  };
+})();
+</script>
 <script src="app.js"></script><script src="startup_gate.js"></script><script src="setup_wizard.js"></script><script src="configuration_status.js"></script><script src="configuration_profiles.js"></script><script src="runtime_ready.js"></script><script src="startup_controller.js"></script>
+<script>
+(() => {
+  const oldButton = document.getElementById("pairDevice");
+  if (!oldButton) return;
+  const button = oldButton.cloneNode(true);
+  oldButton.replaceWith(button);
+  button.addEventListener("click", async () => {
+    const el = document.getElementById("pairStatus");
+    button.disabled = true;
+    if (el) el.textContent = "Generating secure pairing code…";
+    try {
+      const response = await fetch("/v1/devices/pairing/offer", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({capabilities:["windows.apps","windows.files.read","windows.browser"]})
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "pairing failed");
+      if (el) el.textContent = `Code: ${data.pairing_code} · expires ${new Date(data.expires_at * 1000).toLocaleTimeString()}`;
+    } catch (error) {
+      if (el) el.textContent = `Pairing unavailable: ${error.message}`;
+    } finally {
+      button.disabled = false;
+    }
+  });
+})();
+</script>
 </body></html>
