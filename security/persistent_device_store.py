@@ -43,12 +43,16 @@ class PersistentDeviceStore:
                 device_id TEXT PRIMARY KEY,
                 device_type TEXT NOT NULL,
                 display_name TEXT NOT NULL DEFAULT '',
+                endpoint TEXT NOT NULL DEFAULT '',
                 online INTEGER NOT NULL DEFAULT 0,
                 last_seen INTEGER NOT NULL,
                 revoked INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY(device_id) REFERENCES trusted_devices(device_id)
             );
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(ecosystem_devices)").fetchall()}
+            if "endpoint" not in columns:
+                db.execute("ALTER TABLE ecosystem_devices ADD COLUMN endpoint TEXT NOT NULL DEFAULT ''")
 
     @staticmethod
     def hash_secret(secret: bytes) -> str:
@@ -64,7 +68,7 @@ class PersistentDeviceStore:
                 "INSERT OR REPLACE INTO trusted_devices "
                 "(device_id, secret_hash, capabilities, revoked, created_at) "
                 "VALUES (?, ?, ?, 0, ?)",
-                (device_id, self.hash_secret(secret), caps, 0, now),
+                (device_id, self.hash_secret(secret), caps, now),
             )
 
     def get_device(self, device_id):
@@ -94,7 +98,7 @@ class PersistentDeviceStore:
             for r in rows
         ]
 
-    def upsert_ecosystem_device(self, device_id, device_type, display_name="", online=True):
+    def upsert_ecosystem_device(self, device_id, device_type, display_name="", online=True, endpoint=""):
         if not device_id or not device_type:
             raise ValueError("device_id and device_type are required")
         trusted = self.get_device(device_id)
@@ -104,13 +108,31 @@ class PersistentDeviceStore:
         with self._lock, self._connect() as db:
             db.execute(
                 "INSERT INTO ecosystem_devices "
-                "(device_id, device_type, display_name, online, last_seen, revoked) "
-                "VALUES (?, ?, ?, ?, ?, 0) "
+                "(device_id, device_type, display_name, endpoint, online, last_seen, revoked) "
+                "VALUES (?, ?, ?, ?, ?, ?, 0) "
                 "ON CONFLICT(device_id) DO UPDATE SET "
                 "device_type=excluded.device_type, display_name=excluded.display_name, "
+                "endpoint=CASE WHEN excluded.endpoint != '' THEN excluded.endpoint ELSE ecosystem_devices.endpoint END, "
                 "online=excluded.online, last_seen=excluded.last_seen, revoked=0",
-                (device_id, device_type, display_name, int(bool(online)), now),
+                (device_id, device_type, display_name, endpoint, int(bool(online)), now),
             )
+
+    def get_ecosystem_device(self, device_id):
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT e.device_id, e.device_type, e.display_name, e.endpoint, e.online, "
+                "e.last_seen, e.revoked, t.capabilities, t.revoked "
+                "FROM ecosystem_devices e JOIN trusted_devices t ON t.device_id=e.device_id "
+                "WHERE e.device_id=?", (device_id,)
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "device_id": row[0], "device_type": row[1], "display_name": row[2],
+            "endpoint": row[3], "online": bool(row[4]), "last_seen": row[5],
+            "revoked": bool(row[6] or row[8]),
+            "capabilities": frozenset(filter(None, row[7].split(","))),
+        }
 
     def set_ecosystem_online(self, device_id, online):
         now = int(time.time())
@@ -123,15 +145,15 @@ class PersistentDeviceStore:
     def list_ecosystem_devices(self):
         with self._connect() as db:
             rows = db.execute(
-                "SELECT e.device_id, e.device_type, e.display_name, e.online, e.last_seen, "
+                "SELECT e.device_id, e.device_type, e.display_name, e.endpoint, e.online, e.last_seen, "
                 "e.revoked, t.capabilities, t.revoked "
                 "FROM ecosystem_devices e JOIN trusted_devices t ON t.device_id=e.device_id "
                 "ORDER BY e.device_id"
             ).fetchall()
         return [
-            {"device_id": r[0], "device_type": r[1], "display_name": r[2],
-             "online": bool(r[3]), "last_seen": r[4], "revoked": bool(r[5] or r[7]),
-             "capabilities": frozenset(filter(None, r[6].split(",")))}
+            {"device_id": r[0], "device_type": r[1], "display_name": r[2], "endpoint": r[3],
+             "online": bool(r[4]), "last_seen": r[5], "revoked": bool(r[6] or r[8]),
+             "capabilities": frozenset(filter(None, r[7].split(",")))}
             for r in rows
         ]
 
