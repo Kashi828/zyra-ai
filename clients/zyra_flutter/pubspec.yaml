@@ -1,0 +1,17 @@
+name: zyra_flutter
+description: ZYRA AI modern cross-platform client for Android and Windows.
+publish_to: "none"
+version: 0.2.0-beta.1+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  http: ^1.2.2
+
+flutter:
+  uses-material-design: true
