@@ -21,7 +21,7 @@ def create_app(db_path="data/zyra_security.sqlite3", runner=None):
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["null"],
-        allow_origin_regex=r"^https?://(?:127\\.0\\.0\\.1|localhost)(?::\\d+)?$",
+        allow_origin_regex=r"^https?://(?:127\.0\.0\.1|localhost)(?::\d+)?$",
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -106,7 +106,8 @@ def create_app(db_path="data/zyra_security.sqlite3", runner=None):
     from core.task_control import TaskControlRegistry
     from api.task_events_routes import register_task_event_routes
     app.state.task_realtime_bridge = TaskRealtimeBridge(event_hub)
-    task_store = __import__("security.persistent_task_store", fromlist=["PersistentTaskStore"]).PersistentTaskStore(db_path)
+    from security.persistent_task_store import PersistentTaskStore
+    task_store = PersistentTaskStore(db_path)
     app.state.task_store = task_store
     app.state.task_controls = TaskControlRegistry(app.state.task_realtime_bridge, task_store)
     app.state.task_controls.bind_store(task_store)
