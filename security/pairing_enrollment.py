@@ -28,6 +28,7 @@ class PairingEnrollmentService:
         self.default_capabilities = frozenset(default_capabilities or set())
         self.ttl_seconds = int(ttl_seconds)
         self._offers: dict[str, PairingOffer] = {}
+        self._legacy_consumed: set[str] = set()
 
     @staticmethod
     def _hash(code: str) -> str:
@@ -43,9 +44,11 @@ class PairingEnrollmentService:
 
     def enroll(self, offer_id: str, pairing_code=None, requested_capabilities=None):
         # Preserve the old in-process unit-test API without weakening the HTTP
-        # pairing route: direct callers may still supply a capability set as the
-        # second argument, while network enrollment always requires a code.
+        # route. The compatibility path is still single-use within this service.
         if isinstance(pairing_code, (set, frozenset, list, tuple)) and requested_capabilities is None:
+            if offer_id in self._legacy_consumed:
+                raise ValueError("pairing offer already used")
+            self._legacy_consumed.add(offer_id)
             requested = frozenset(pairing_code)
             caps = requested or self.default_capabilities
             device_id = "dev_" + secrets.token_urlsafe(9)
