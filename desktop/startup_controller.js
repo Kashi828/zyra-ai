@@ -19,8 +19,17 @@
     try {
       const startup = await request("/v1/setup/startup");
       if (startup.screen === "workspace" && !startup.setup_required) return;
+
       const wizard = await request("/v1/setup/wizard");
       if (wizard.step === "completed" || wizard.completed) return;
+
+      // Diagnostics are a one-time gate. Once they have passed, never send the
+      // user back through the preparation screen; continue directly to onboarding.
+      if (wizard.step === "configuration" || wizard.diagnostics_passed) {
+        show("onboarding");
+        return;
+      }
+
       show("setup");
       const check = await request("/v1/system/setup-check");
       if (typeof window.renderSetupChecks === "function") window.renderSetupChecks(check);
