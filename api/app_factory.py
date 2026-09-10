@@ -125,4 +125,17 @@ def create_app(db_path=None, runner=None):
         event_bridge=app.state.task_realtime_bridge,
     )
     register_recovery_routes(app, app.state.recovery_reconciler, app.state.workflow_resume, security.api_auth)
+
+    from security.capability_authorizer import CapabilityAuthorizer
+    from security.pairing_enrollment import PairingEnrollmentService
+    from api.pairing_enrollment_routes import register_pairing_enrollment_routes
+    app.state.pairing_capabilities = CapabilityAuthorizer()
+    app.state.pairing_enrollment = PairingEnrollmentService()
+    register_pairing_enrollment_routes(
+        app,
+        app.state.pairing_enrollment,
+        app.state.pairing_capabilities,
+        security.api_auth,
+        security.store,
+    )
     return app
