@@ -77,7 +77,11 @@ def create_app(db_path=None, runner=None):
                 online=device.online,
             )
     register_ecosystem_routes(app, ecosystem, security.api_auth, ecosystem_registry)
-    register_ecosystem_pairing_routes(app)
+    register_ecosystem_pairing_routes(
+        app,
+        auth_guard=security.api_auth,
+        registry=ecosystem_registry,
+    )
 
     register_realtime_routes(app, security, event_hub)
     from api.voice_routes import register_voice_routes
