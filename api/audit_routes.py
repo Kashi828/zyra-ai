@@ -29,8 +29,4 @@ def register_audit_routes(app, security_context, audit_log):
     def query_audit(body: dict):
         device_id, _ = _authenticate(auth_guard, body)
         events = audit_log.recent_for_device(device_id, body.get("limit", 100))
-        return {
-            "ok": True,
-            "device_id": device_id,
-            "events": [event.__dict__ for event in events],
-        }
+        return {"events": [event.__dict__ for event in events]}
