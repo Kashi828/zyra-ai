@@ -45,7 +45,7 @@ def register_ecosystem_pairing_routes(app, pairing_service=None, auth_guard=None
     @app.post("/v1/ecosystem/pairing/start")
     def start_pairing(body: dict):
         authorize(body)
-        device_id = str(body.get("target_device_id", body.get("device_id", "")))
+        device_id = str(body.get("target_device_id", ""))
         device_type = str(body.get("device_type", ""))
         endpoint = _validate_endpoint(body.get("endpoint", ""))
         if not device_id or not device_type:
