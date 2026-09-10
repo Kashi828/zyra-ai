@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import urlparse
 
 from fastapi import HTTPException
+
+from security.capability_broker import CapabilityBroker
 
 
 def _authorize(auth_gateway, body):
@@ -28,22 +29,19 @@ def _plan_goal(goal: str) -> tuple[str, dict, str]:
 
     urls = re.findall(r"https?://[^\s]+", text)
     if urls:
-        url = urls[0].rstrip(".,)"]
-        return "open_url", {"url": url}, "windows.browser"
+        return "open_url", {"url": urls[0].rstrip(".,)"]}, "windows.browser"
 
-    match = re.match(r"^(?:open|launch|start)\s+(.+)$", text, re.IGNORECASE)
-    if match:
-        target = match.group(1).strip().strip('"')
-        if lowered.startswith(("open folder", "open directory", "open file location")):
-            remainder = re.sub(r"^(?:open folder|open directory|open file location)\s*", "", text, flags=re.IGNORECASE).strip()
-            return "open_folder", {"path": remainder or "."}, "windows.files.read"
-        if target.lower() in {"settings", "windows settings"}:
-            return "open_app", {"name": "ms-settings:"}, "windows.apps"
+    folder_match = re.match(r"^(?:open|show)\s+(?:folder|directory)\s+(.+)$", text, re.IGNORECASE)
+    if folder_match:
+        return "open_folder", {"path": folder_match.group(1).strip().strip('"')}, "windows.files.read"
+
+    app_match = re.match(r"^(?:open|launch|start)\s+(.+)$", text, re.IGNORECASE)
+    if app_match:
+        target = app_match.group(1).strip().strip('"')
         return "open_app", {"name": target}, "windows.apps"
 
-    if lowered.startswith("open "):
-        target = text[5:].strip()
-        return "open_app", {"name": target}, "windows.apps"
+    if lowered in {"open settings", "open windows settings"}:
+        return "open_app", {"name": "settings"}, "windows.apps"
 
     raise HTTPException(
         status_code=422,
@@ -84,8 +82,16 @@ def register_runtime_routes(app, runtime, auth_gateway=None):
         if not isinstance(confirmed, bool):
             raise HTTPException(status_code=400, detail="confirmed must be a boolean")
 
-        if capability not in device["capabilities"]:
-            raise HTTPException(status_code=403, detail="capability is not granted to device")
+        broker = CapabilityBroker(device["capabilities"])
+        decision = broker.require(capability, confirmed=confirmed)
+        if not decision.allowed:
+            status = 409 if decision.requires_confirmation else 403
+            detail = {
+                "reason": decision.reason,
+                "capability": capability,
+                "requires_confirmation": decision.requires_confirmation,
+            } if decision.requires_confirmation else decision.reason
+            raise HTTPException(status_code=status, detail=detail)
 
         context = dict(body.get("context") or {})
         context.update({
