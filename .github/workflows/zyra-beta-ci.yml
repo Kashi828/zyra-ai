@@ -18,10 +18,11 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install backend dependencies when present
+      - name: Install test and backend dependencies
         shell: bash
         run: |
-          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          python -m pip install --upgrade pip pytest
+          python -m pip install -r requirements.txt
       - name: Python tests
         run: python -m pytest -q
       - name: Python compile
@@ -40,7 +41,8 @@ jobs:
       - name: Install Python dependencies
         shell: pwsh
         run: |
-          if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
+          python -m pip install --upgrade pip pyinstaller
+          python -m pip install -r requirements.txt
       - name: Install npm dependencies
         run: npm install
       - name: Electron syntax
@@ -49,7 +51,7 @@ jobs:
           node --check electron/main.js
           node --check electron/preload.js
       - name: Windows beta installer
-        run: npm run build:win
+        run: npm run bundle:win-runtime; npx electron-builder --win nsis --x64 --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: zyra-windows-beta
@@ -66,6 +68,11 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+          accept-android-sdk-licenses: true
+      - name: Install Android 36 platform
+        run: sdkmanager "platforms;android-36"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
