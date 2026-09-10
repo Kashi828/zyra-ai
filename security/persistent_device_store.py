@@ -182,6 +182,41 @@ class PersistentDeviceStore:
             )
         return expires
 
+    def get_session(self, session_id):
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT session_id, device_id, expires_at, revoked, created_at "
+                "FROM device_sessions WHERE session_id=?", (session_id,)
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "session_id": row[0], "device_id": row[1], "expires_at": int(row[2]),
+            "revoked": bool(row[3]), "created_at": int(row[4]),
+        }
+
+    def get_session_expires_at(self, session_id):
+        session = self.get_session(session_id)
+        if not session:
+            raise PermissionError("session not found")
+        return session["expires_at"]
+
+    def list_sessions(self, device_id, include_inactive=False, current_session_id=None):
+        query = "SELECT session_id, expires_at, revoked, created_at FROM device_sessions WHERE device_id=?"
+        params = [device_id]
+        if not include_inactive:
+            query += " AND revoked=0 AND expires_at>?"
+            params.append(int(time.time()))
+        query += " ORDER BY created_at DESC"
+        with self._connect() as db:
+            rows = db.execute(query, tuple(params)).fetchall()
+        now = int(time.time())
+        return tuple({
+            "session_id": row[0], "expires_at": int(row[1]), "revoked": bool(row[2]),
+            "created_at": int(row[3]), "current": row[0] == current_session_id,
+            "active": not bool(row[2]) and int(row[1]) > now,
+        } for row in rows)
+
     def validate_session(self, session_id, device_id=None):
         now = int(time.time())
         with self._connect() as db:
@@ -198,7 +233,15 @@ class PersistentDeviceStore:
         with self._lock, self._connect() as db:
             db.execute("UPDATE device_sessions SET revoked=1 WHERE session_id=?", (session_id,))
 
+    def revoke_device_sessions(self, device_id):
+        with self._lock, self._connect() as db:
+            db.execute("UPDATE device_sessions SET revoked=1 WHERE device_id=? AND revoked=0", (device_id,))
+
     def purge_expired_sessions(self):
         now = int(time.time())
         with self._lock, self._connect() as db:
             db.execute("DELETE FROM device_sessions WHERE expires_at <= ? OR revoked=1", (now,))
+
+    def issue_session_id(self):
+        import secrets
+        return "sess_" + secrets.token_urlsafe(18)
