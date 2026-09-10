@@ -1,7 +1,6 @@
 import secrets
-import time
 from security.persistent_device_store import PersistentDeviceStore
-from security.session_rotation_store import SessionRotationStore, RefreshResult
+from security.session_rotation_store import SessionRotationStore
 
 
 class SessionService:
@@ -12,19 +11,28 @@ class SessionService:
         self.refresh_store = refresh_store or SessionRotationStore(store.db_path)
         self.session_ttl = int(session_ttl)
 
-    def create(self, device_id: str):
-        if not self.store.get_device(device_id) or self.store.get_device(device_id)["revoked"]:
+    def _trusted_device(self, device_id: str):
+        device = self.store.get_device(device_id)
+        if not device or device["revoked"]:
             raise PermissionError("device is not trusted")
+        return device
+
+    def create(self, device_id: str):
+        self._trusted_device(device_id)
         session_id = "sess_" + secrets.token_urlsafe(18)
-        self.store.issue_session(device_id, session_id, self.session_ttl)
+        session_expires = self.store.issue_session(
+            device_id, session_id, self.session_ttl
+        )
         token, refresh_expires = self.refresh_store.issue(device_id, session_id)
         return {
             "session_id": session_id,
+            "session_expires_at": int(session_expires),
             "refresh_token": token,
             "expires_at": refresh_expires,
         }
 
     def refresh(self, device_id: str, refresh_token: str):
+        self._trusted_device(device_id)
         new_session = "sess_" + secrets.token_urlsafe(18)
 
         def issuer(did, sid):
@@ -35,6 +43,7 @@ class SessionService:
         )
         return {
             "session_id": result.session_id,
+            "session_expires_at": int(self.store.get_session_expires_at(result.session_id)),
             "refresh_token": result.refresh_token,
             "expires_at": result.expires_at,
         }
