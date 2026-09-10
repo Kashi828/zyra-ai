@@ -213,6 +213,18 @@ async function ensureAuthContext() {
       } catch (_) {}
     }
 
+    if (state?.device_id && state?.device_secret) {
+      try {
+        const created = await requestJson("/v1/session/create", "POST", {
+          device_id: state.device_id,
+          device_secret: state.device_secret,
+        });
+        state = {...state, ...created};
+        saveAuthState(state);
+        return {device_id: state.device_id, session_id: state.session_id};
+      } catch (_) {}
+    }
+
     const bootstrap = await requestJson("/v1/local/bootstrap", "POST", {});
     saveAuthState(bootstrap);
     return {device_id: bootstrap.device_id, session_id: bootstrap.session_id};
