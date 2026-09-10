@@ -18,9 +18,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - name: Install backend dependencies when present
+      - name: Install test and backend dependencies
         shell: bash
         run: |
+          python -m pip install --upgrade pip pytest
           if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
       - name: Python tests
         run: python -m pytest -q
@@ -40,6 +41,7 @@ jobs:
       - name: Install Python dependencies
         shell: pwsh
         run: |
+          python -m pip install --upgrade pip pyinstaller
           if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
       - name: Install npm dependencies
         run: npm install
@@ -66,6 +68,11 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+          accept-android-sdk-licenses: true
+      - name: Install Android 36 platform
+        run: sdkmanager "platforms;android-36"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.5.0'
