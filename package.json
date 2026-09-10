@@ -1,6 +1,6 @@
 {
   "name": "zyra-ai-desktop",
-  "version": "0.1.0-beta.2",
+  "version": "0.1.0-beta.3",
   "description": "ZYRA AI Windows desktop shell",
   "main": "electron/main.js",
   "private": true,
