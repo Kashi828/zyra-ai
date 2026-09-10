@@ -1,10 +1,13 @@
 package com.zyra
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
@@ -36,8 +39,8 @@ class MainActivity : Activity() {
     private val warning = Color.rgb(245, 190, 80)
     private val prefs by lazy { getSharedPreferences("zyra_phone", MODE_PRIVATE) }
     private val http = OkHttpClient.Builder()
-        .connectTimeout(4, TimeUnit.SECONDS)
-        .readTimeout(4, TimeUnit.SECONDS)
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
         .build()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
@@ -46,6 +49,8 @@ class MainActivity : Activity() {
     private lateinit var activityLog: TextView
     private lateinit var taskInput: EditText
     private lateinit var pcUrlInput: EditText
+    private lateinit var offerIdInput: EditText
+    private lateinit var pairCodeInput: EditText
     private var runOnPc = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,14 +95,14 @@ class MainActivity : Activity() {
             setLineSpacing(0f, 1.02f)
         }
         root.addView(greeting)
-        root.addView(label("A calm command center for your phone and trusted Windows PC.", 14f, muted),
+        root.addView(label("Safe phone actions plus an authenticated Windows agent connection.", 14f, muted),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(9) })
 
         root.addView(space(22))
         val taskCard = card()
         taskCard.addView(label("ASK ZYRA", 11f, accent))
         taskInput = EditText(this).apply {
-            hint = "What should ZYRA do?"
+            hint = "Try: open camera · open settings · open https://example.com"
             textSize = 16f
             setTextColor(primaryText)
             setHintTextColor(muted)
@@ -129,8 +134,9 @@ class MainActivity : Activity() {
         root.addView(space(14))
         val status = card()
         status.addView(label("ECOSYSTEM", 11f, muted))
-        status.addView(row("Phone agent", "Active", success))
-        pcState = label("Not connected", 14f, muted)
+        status.addView(row("Phone agent", "Ready", success))
+        pcState = label(if (prefs.getString("device_id", null) != null) "Paired" else "Not paired", 14f,
+            if (prefs.getString("device_id", null) != null) success else muted)
         val pcRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -140,13 +146,13 @@ class MainActivity : Activity() {
         pcRow.addView(pcState)
         status.addView(pcRow)
         status.addView(row("Protection", "Active", success))
-        status.addView(row("Remote access", "LAN / local only", warning))
+        status.addView(row("Network", "Private LAN only", warning))
         root.addView(status)
 
         root.addView(space(14))
         val connect = card()
-        connect.addView(label("CONNECT WINDOWS PC", 11f, muted))
-        connect.addView(label("Use a private-network address. ZYRA blocks public hosts here.", 12f, muted),
+        connect.addView(label("WINDOWS CONNECTION", 11f, muted))
+        connect.addView(label("1. Generate a pairing code on Windows. 2. Enter the code here. 3. Run tasks on PC.", 12f, muted),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
         pcUrlInput = EditText(this).apply {
             hint = "http://192.168.x.x:8000"
@@ -159,22 +165,46 @@ class MainActivity : Activity() {
             background = rounded(inputBg, 14)
         }
         connect.addView(pcUrlInput, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(10) })
-        val connectButton = secondaryButton("Connect & check")
-        connectButton.setOnClickListener { connectToPc() }
-        connect.addView(connectButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8) })
+        val checkButton = secondaryButton("Check Windows agent")
+        checkButton.setOnClickListener { connectToPc() }
+        connect.addView(checkButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8) })
+
+        offerIdInput = EditText(this).apply {
+            hint = "Pairing offer ID"
+            textSize = 14f
+            setTextColor(primaryText)
+            setHintTextColor(muted)
+            setSingleLine(true)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(inputBg, 14)
+        }
+        connect.addView(offerIdInput, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(8) })
+        pairCodeInput = EditText(this).apply {
+            hint = "Pairing code"
+            textSize = 14f
+            setTextColor(primaryText)
+            setHintTextColor(muted)
+            setSingleLine(true)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(inputBg, 14)
+        }
+        connect.addView(pairCodeInput, LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(8) })
+        val pairButton = secondaryButton("Pair this phone")
+        pairButton.setOnClickListener { pairWithWindows() }
+        connect.addView(pairButton, LinearLayout.LayoutParams(-1, dp(46)).apply { topMargin = dp(8) })
         root.addView(connect)
 
         root.addView(space(14))
         val logCard = card()
         logCard.addView(label("ACTIVITY", 11f, muted))
-        activityLog = label("Ready · phone agent is local-first.", 13f, primaryText)
+        activityLog = label("Ready · authenticated local-first agent.", 13f, primaryText)
         activityLog.setLineSpacing(0f, 1.15f)
         logCard.addView(activityLog, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         root.addView(logCard)
 
         root.addView(space(26))
         val footer = TextView(this).apply {
-            text = "ZYRA AI  •  Phone + Windows ecosystem  •  beta.2"
+            text = "ZYRA AI  •  Phone + Windows ecosystem  •  beta.4"
             textSize = 11f
             setTextColor(Color.rgb(100, 108, 126))
             gravity = Gravity.CENTER
@@ -191,35 +221,165 @@ class MainActivity : Activity() {
             return
         }
         if (!runOnPc) {
-            activityLog.text = "Phone agent received the task."
+            executePhoneTask(task)
             return
         }
+        sendPcTask(task)
+    }
+
+    private fun executePhoneTask(task: String) {
+        val lowered = task.lowercase()
+        try {
+            when {
+                lowered.contains("settings") -> startActivity(Intent(Settings.ACTION_SETTINGS))
+                lowered.contains("wifi") -> startActivity(Intent(Settings.ACTION_WIFI_SETTINGS))
+                lowered.contains("bluetooth") -> startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+                lowered.contains("camera") -> startActivity(Intent("android.media.action.IMAGE_CAPTURE"))
+                lowered.contains("browser") || lowered.contains("web") -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com")))
+                Regex("https?://\\S+").containsMatchIn(task) -> {
+                    val url = Regex("https?://\\S+").find(task)!!.value.trimEnd('.', ',', ')')
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+                lowered.startsWith("share ") -> {
+                    val text = task.substringAfter(' ', "").trim()
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, text)
+                    }
+                    startActivity(Intent.createChooser(intent, "Share with"))
+                }
+                else -> {
+                    activityLog.text = "Phone action not mapped yet. Try settings, Wi‑Fi, Bluetooth, camera, browser, URL, or share."
+                    return
+                }
+            }
+            activityLog.text = "Phone action completed."
+        } catch (e: Exception) {
+            activityLog.text = "Phone action failed: ${e.message ?: "unknown error"}"
+        }
+    }
+
+    private fun sendPcTask(task: String) {
         val base = pcUrlInput.text.toString().trim().trimEnd('/')
         if (!isAllowedPcUrl(base)) {
-            activityLog.text = "Use a local/LAN Windows address (127.0.0.1, 10.x, 172.16–31.x, 192.168.x, or .local)."
+            activityLog.text = "Use a local/LAN Windows address first."
             return
         }
-        activityLog.text = "Sending to trusted Windows agent…"
-        val body = JSONObject()
-            .put("goal", task)
-            .put("context", JSONObject().put("source", "android"))
-            .toString().toRequestBody(jsonType)
-        val request = Request.Builder().url("$base/v1/runtime/tasks").post(body).build()
-        http.newCall(request).enqueue(object : okhttp3.Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread { activityLog.text = "PC connection failed: ${e.message ?: "unknown error"}" }
-            }
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    runOnUiThread {
-                        if (response.isSuccessful) {
-                            prefs.edit().putString("pc_url", base).apply()
-                            pcState.text = "Connected"
-                            pcState.setTextColor(success)
-                            activityLog.text = "Task handed to the Windows agent."
-                        } else activityLog.text = "Windows agent rejected the task (${response.code})."
+        activityLog.text = "Refreshing authenticated Windows session…"
+        ensurePcSession({ deviceId, sessionId ->
+            activityLog.text = "Sending task to Windows…"
+            val body = JSONObject()
+                .put("goal", task)
+                .put("device_id", deviceId)
+                .put("session_id", sessionId)
+                .put("context", JSONObject().put("source", "android"))
+                .toString().toRequestBody(jsonType)
+            val request = Request.Builder().url("$base/v1/runtime/tasks").post(body).build()
+            http.newCall(request).enqueue(object : okhttp3.Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    runOnUiThread { activityLog.text = "PC task failed: ${e.message ?: "connection failed"}" }
+                }
+                override fun onResponse(call: Call, response: Response) {
+                    response.use {
+                        val text = response.body?.string().orEmpty()
+                        runOnUiThread {
+                            if (response.isSuccessful) {
+                                pcState.text = "Connected"
+                                pcState.setTextColor(success)
+                                val json = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
+                                val status = json.optString("status", "completed")
+                                activityLog.text = "Windows task ${status}: ${json.optString("detail", "done")}"
+                            } else {
+                                activityLog.text = "Windows agent rejected the task (${response.code})."
+                            }
+                        }
                     }
                 }
+            })
+        }, { message -> runOnUiThread { activityLog.text = message } })
+    }
+
+    private fun ensurePcSession(onReady: (String, String) -> Unit, onError: (String) -> Unit) {
+        val device = prefs.getString("device_id", null)
+        val secret = prefs.getString("device_secret", null)
+        val refresh = prefs.getString("refresh_token", null)
+        if (device.isNullOrBlank() || secret.isNullOrBlank()) {
+            onError("Pair this phone with Windows first.")
+            return
+        }
+
+        if (!refresh.isNullOrBlank()) {
+            postJson("/v1/session/refresh", JSONObject().put("device_id", device).put("refresh_token", refresh)) { ok, text ->
+                if (ok) {
+                    val json = JSONObject(text)
+                    saveSession(device, secret, json)
+                    onReady(device, json.getString("session_id"))
+                } else {
+                    createSession(device, secret, onReady, onError)
+                }
+            }
+        } else {
+            createSession(device, secret, onReady, onError)
+        }
+    }
+
+    private fun createSession(device: String, secret: String, onReady: (String, String) -> Unit, onError: (String) -> Unit) {
+        postJson("/v1/session/create", JSONObject().put("device_id", device).put("device_secret", secret)) { ok, text ->
+            if (!ok) { onError("Windows session creation failed."); return@postJson }
+            try {
+                val json = JSONObject(text)
+                saveSession(device, secret, json)
+                onReady(device, json.getString("session_id"))
+            } catch (_: Exception) { onError("Windows session response was invalid.") }
+        }
+    }
+
+    private fun saveSession(device: String, secret: String, json: JSONObject) {
+        prefs.edit()
+            .putString("device_id", device)
+            .putString("device_secret", secret)
+            .putString("session_id", json.optString("session_id"))
+            .putString("refresh_token", json.optString("refresh_token"))
+            .putLong("expires_at", json.optLong("expires_at", 0L))
+            .apply()
+    }
+
+    private fun pairWithWindows() {
+        val base = pcUrlInput.text.toString().trim().trimEnd('/')
+        val offer = offerIdInput.text.toString().trim()
+        val code = pairCodeInput.text.toString().trim()
+        if (!isAllowedPcUrl(base)) { activityLog.text = "Enter the Windows LAN address first."; return }
+        if (offer.isBlank() || code.isBlank()) { activityLog.text = "Enter the Windows pairing offer ID and code."; return }
+        activityLog.text = "Enrolling this phone…"
+        val body = JSONObject()
+            .put("offer_id", offer)
+            .put("pairing_code", code)
+            .put("capabilities", org.json.JSONArray().apply { put("android.ui"); put("android.accessibility") })
+        postJson("$base/v1/devices/pairing/enroll", body, absolute = true) { ok, text ->
+            if (!ok) { runOnUiThread { activityLog.text = "Pairing rejected." }; return@postJson }
+            try {
+                val json = JSONObject(text)
+                val device = json.getString("device_id")
+                val secret = json.getString("device_secret")
+                prefs.edit().putString("pc_url", base).putString("device_id", device).putString("device_secret", secret).apply()
+                createSession(device, secret, { _, _ ->
+                    runOnUiThread {
+                        pcState.text = "Paired"
+                        pcState.setTextColor(success)
+                        activityLog.text = "Phone paired securely with Windows."
+                    }
+                }, { message -> runOnUiThread { activityLog.text = message } })
+            } catch (_: Exception) { runOnUiThread { activityLog.text = "Pairing response was invalid." } }
+        }
+    }
+
+    private fun postJson(path: String, body: JSONObject, absolute: Boolean = false, callback: (Boolean, String) -> Unit) {
+        val url = if (absolute) path else "http://127.0.0.1:8000$path"
+        val request = Request.Builder().url(url).post(body.toString().toRequestBody(jsonType)).build()
+        http.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: Call, e: IOException) = callback(false, e.message ?: "connection failed")
+            override fun onResponse(call: Call, response: Response) {
+                response.use { callback(response.isSuccessful, response.body?.string().orEmpty()) }
             }
         })
     }
@@ -245,9 +405,9 @@ class MainActivity : Activity() {
                     runOnUiThread {
                         if (response.isSuccessful) {
                             prefs.edit().putString("pc_url", base).apply()
-                            pcState.text = "Connected"
+                            pcState.text = if (prefs.getString("device_id", null) != null) "Paired" else "Reachable"
                             pcState.setTextColor(success)
-                            activityLog.text = "Windows agent connected."
+                            activityLog.text = "Windows agent is reachable."
                         } else {
                             pcState.text = "Error"
                             pcState.setTextColor(warning)
