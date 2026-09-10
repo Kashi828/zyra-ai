@@ -26,6 +26,12 @@ class WindowsCommandRegistry:
         "windows settings": "ms-settings:",
     }
 
+    _CAPABILITY_ALIASES = {
+        "windows.apps": {"windows.apps", "pc.apps"},
+        "windows.files.read": {"windows.files.read", "pc.files"},
+        "windows.browser": {"windows.browser", "pc.web"},
+    }
+
     def __init__(self, runner=None):
         self._runner = runner or self._default_runner
         self._tools = {
@@ -39,8 +45,6 @@ class WindowsCommandRegistry:
         normalized = name.strip().lower()
         if normalized in cls._KNOWN_APPS:
             return cls._KNOWN_APPS[normalized]
-        # Direct executable paths are permitted only when they resolve to an
-        # existing file. There is never a command interpreter involved.
         candidate = os.path.expandvars(os.path.expanduser(name.strip()))
         if candidate.lower().endswith(".exe") and os.path.isfile(candidate):
             return candidate
@@ -77,6 +81,7 @@ class WindowsCommandRegistry:
         spec = self._tools.get(action)
         if spec is None:
             raise ValueError("unsupported action")
-        if spec.capability not in capabilities:
+        allowed = self._CAPABILITY_ALIASES.get(spec.capability, {spec.capability})
+        if not allowed.intersection(set(capabilities)):
             raise PermissionError("missing capability")
         return self._runner(action, payload)
