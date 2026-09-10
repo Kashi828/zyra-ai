@@ -33,12 +33,18 @@ def _authenticate_session(session_service, body: dict) -> tuple[str, str]:
     return device_id, session_id
 
 
-def register_session_routes(app, session_service):
+def register_session_routes(app, session_service, audit_log=None):
+    def audit(event_type, device_id, session_id, detail=None):
+        if audit_log:
+            audit_log.record(event_type, device_id, session_id, detail or {})
+
     @app.post("/v1/session/create")
     def create_session(body: dict):
         device_id = _authenticate_device(session_service, body)
         try:
-            return {"ok": True, **session_service.create(device_id)}
+            result = session_service.create(device_id)
+            audit("session.created", device_id, result["session_id"])
+            return {"ok": True, **result}
         except PermissionError as exc:
             raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -86,7 +92,8 @@ def register_session_routes(app, session_service):
         if target["revoked"] or target["expires_at"] <= int(time.time()):
             raise HTTPException(status_code=409, detail="session is already inactive")
 
-        session_service.store.revoke_session(target_session_id)
+        session_service.revoke_session(device_id, target_session_id)
+        audit("session.revoked", device_id, session_id, {"target_session_id": target_session_id})
         return {
             "ok": True,
             "revoked": True,
@@ -101,10 +108,12 @@ def register_session_routes(app, session_service):
         if target_session != session_id:
             raise HTTPException(status_code=403, detail="a session can only revoke itself")
         session_service.logout(device_id, session_id)
+        audit("session.logged_out", device_id, session_id)
         return {"ok": True, "logged_out": True, "session_id": session_id}
 
     @app.post("/v1/session/logout-device")
     def logout_device(body: dict):
         device_id = _authenticate_device(session_service, body)
         session_service.logout_device(device_id)
+        audit("device.revoked", device_id, "")
         return {"ok": True, "device_revoked": True}
