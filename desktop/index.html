@@ -26,15 +26,15 @@
     <h1>Welcome to ZYRA AI</h1>
     <p>Set up your local AI, connect your devices, and review permissions before you begin.</p>
     <div class="step" id="obStep1"><h3>1 · AI Engine</h3><p>Local AI is recommended for privacy and zero API cost.</p><button id="chooseLocal" class="primary">Use Local AI</button></div>
-    <div class="step hidden" id="obStep2"><h3>2 · Connect a device</h3><p>You can pair Android later using the secure pairing flow.</p><button id="startPairing">Start Pairing</button><button id="skipPairing">Skip for now</button></div>
+    <div class="step hidden" id="obStep2"><h3>2 · Connect a device</h3><p>Pair Android using the secure pairing flow. The Windows app will show both the Offer ID and one-time code.</p><button id="startPairing">Start Pairing</button><button id="skipPairing">Skip for now</button></div>
     <div class="step hidden" id="obStep3"><h3>3 · Review permissions</h3><label><input type="checkbox" checked disabled> PC apps</label><label><input type="checkbox" checked disabled> Authorized files</label><label><input type="checkbox" checked disabled> Web actions</label><label><input type="checkbox" checked disabled> Sensitive actions require confirmation</label><button id="finishOnboarding" class="primary">Finish Setup</button></div>
   </div>
 </div>
 <aside><div class="brand">✦ ZYRA</div><nav><button data-section="assistant" class="active">Assistant</button><button data-section="tasks">Tasks</button><button data-section="devices">Devices</button><button data-section="permissions">Permissions</button><button data-section="settings">Settings</button></nav><div class="status"><span></span> <b>Local AI</b> · <em id="deviceSummary">Checking…</em></div></aside>
 <main><header><div><h1>ZYRA AI</h1><p>Your AI agent for PC, web and connected devices.</p></div><button id="stopAgent" class="stop">Stop Agent</button></header>
-<section id="page-assistant" class="page visible"><div class="hero"><div class="card"><h2>What should ZYRA do?</h2><textarea id="goal" placeholder="Try: Open calculator · Open https://example.com · Open folder C:\\Users\\Public"></textarea><div class="actions"><button id="runTask" class="primary">Run Task</button><button>Attach</button><button id="voiceButton" class="voice-btn" title="Start voice input">🎙 Voice</button></div><div id="voicePanel" class="voice-panel hidden"><div class="voice-head"><div><b>Voice input</b><small id="voiceStatus">Ready to listen</small></div><select id="voiceLanguage" aria-label="Voice language"><option value="en-IN">English (India)</option><option value="en-US">English (US)</option><option value="hi-IN">Hindi</option><option value="kn-IN">Kannada</option></select></div><div class="voice-meter"><span id="voiceMeter"></span></div><div class="voice-actions"><button id="voiceStart" class="primary">Start Listening</button><button id="voiceStop" disabled>Stop</button></div><small class="voice-note">Voice input stays inside the existing ZYRA task workflow and does not bypass authorization.</small></div></div><div class="card security"><h3>Security</h3><div class="row"><span>Local-first mode</span><b>ON</b></div><div class="row"><span>Remote access</span><b>LAN / authenticated</b></div><div class="row"><span>Sensitive confirmations</span><b>ON</b></div></div></div><div class="card"><h3>Live activity</h3><div id="activity" class="activity"><span>✓</span> Ready for your next task</div></div></section>
+<section id="page-assistant" class="page visible"><div class="hero"><div class="card"><h2>What should ZYRA do?</h2><p>Type a clear goal. ZYRA will route it through the authenticated runtime and execute only allowlisted actions.</p><textarea id="goal" placeholder="Try: Open calculator · Open https://example.com · Open folder C:\\Users\\Public"></textarea><div class="actions"><button id="runTask" class="primary">Run Task</button><button id="attachButton">Attach</button><button id="voiceButton" class="voice-btn" title="Start voice input">🎙 Voice</button></div><div id="voicePanel" class="voice-panel hidden"><div class="voice-head"><div><b>Voice input</b><small id="voiceStatus">Ready to listen</small></div><select id="voiceLanguage" aria-label="Voice language"><option value="en-IN">English (India)</option><option value="en-US">English (US)</option><option value="hi-IN">Hindi</option><option value="kn-IN">Kannada</option></select></div><div class="voice-meter"><span id="voiceMeter"></span></div><div class="voice-actions"><button id="voiceStart" class="primary">Start Listening</button><button id="voiceStop" disabled>Stop</button></div><small class="voice-note">Voice input stays inside the existing ZYRA task workflow and does not bypass authorization.</small></div></div><div class="card security"><h3>Runtime status</h3><div class="row"><span>Local-first mode</span><b>ON</b></div><div class="row"><span>Remote access</span><b>LAN / authenticated</b></div><div class="row"><span>Sensitive confirmations</span><b>ON</b></div></div></div><div class="card"><h3>Live activity</h3><div id="activity" class="activity"><span>✓</span> Ready for your next task</div></div></section>
 <section id="page-tasks" class="page"><div class="card"><h2>Tasks</h2><div id="taskList"></div></div></section>
-<section id="page-devices" class="page"><div class="card"><h2>Pair a device</h2><p>Generate a short-lived code on Windows, then enter it on Android.</p><button id="pairDevice" class="primary">Generate Pairing Code</button><div id="pairStatus" class="activity" style="margin-top:14px">No pairing code generated.</div></div><div class="card"><h2>Devices</h2><div id="deviceList"></div></div></section>
+<section id="page-devices" class="page"><div class="card"><h2>Pair a device</h2><p>Generate a short-lived offer on Windows. Enter the <b>Offer ID</b> and one-time code on Android.</p><button id="pairDevice" class="primary">Generate Secure Pairing</button><div id="pairStatus" class="activity pairing-info" style="margin-top:14px;white-space:pre-line">No pairing offer generated.</div></div><div class="card"><h2>Devices</h2><div id="deviceList"></div></div></section>
 <section id="page-permissions" class="page"><div class="card"><h2>Permissions</h2><div class="list-item"><div><b>PC Apps</b><small>Open authorized applications</small></div><strong class="online">ENABLED</strong></div><div class="list-item"><div><b>PC Files</b><small>Read approved folders</small></div><strong class="online">ENABLED</strong></div><div class="list-item"><div><b>PC Web</b><small>Open approved web destinations</small></div><strong class="online">ENABLED</strong></div><div class="list-item"><div><b>Sensitive actions</b><small>Require explicit confirmation</small></div><strong class="online">ON</strong></div></div></section>
 <section id="page-settings" class="page"><div class="card"><h2>Settings</h2><div class="setting"><div><b>Local-first mode</b><small>Prefer local AI and local services</small></div><label class="toggle"><input type="checkbox" checked disabled><span></span></label></div><div class="setting"><div><b>LAN device access</b><small>Authenticated Android-to-Windows access on private networks</small></div><label class="toggle"><input type="checkbox" checked disabled><span></span></label></div></div></section>
 </main>
@@ -88,7 +88,7 @@
   button.addEventListener("click", async () => {
     const el = document.getElementById("pairStatus");
     button.disabled = true;
-    if (el) el.textContent = "Generating secure pairing code…";
+    if (el) el.textContent = "Generating secure pairing offer…";
     try {
       const response = await fetch("/v1/devices/pairing/offer", {
         method: "POST",
@@ -97,11 +97,45 @@
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "pairing failed");
-      if (el) el.textContent = `Code: ${data.pairing_code} · expires ${new Date(data.expires_at * 1000).toLocaleTimeString()}`;
+      const expires = data.expires_at ? new Date(data.expires_at * 1000).toLocaleTimeString() : "soon";
+      if (el) el.textContent = `OFFER ID\n${data.offer_id || "unavailable"}\n\nPAIRING CODE\n${data.pairing_code || "unavailable"}\n\nEXPIRES\n${expires}\n\nEnter these two values on Android, along with this Windows LAN address.`;
     } catch (error) {
       if (el) el.textContent = `Pairing unavailable: ${error.message}`;
     } finally {
       button.disabled = false;
+    }
+  });
+})();
+
+(() => {
+  const oldRun = document.getElementById("runTask");
+  if (!oldRun) return;
+  const run = oldRun.cloneNode(true);
+  oldRun.replaceWith(run);
+  run.addEventListener("click", async () => {
+    const goal = document.getElementById("goal")?.value.trim();
+    const activity = document.getElementById("activity");
+    if (!goal) { if (activity) activity.innerHTML = '<span>●</span> Enter a task first.'; return; }
+    run.disabled = true;
+    run.textContent = "Running…";
+    if (activity) activity.innerHTML = '<span>●</span> Authenticating and submitting task…';
+    try {
+      const response = await fetch("/v1/runtime/tasks", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({goal, confirmed:true, context:{source:"windows-desktop"}})
+      });
+      const raw = await response.text();
+      let data = {};
+      try { data = raw ? JSON.parse(raw) : {}; } catch (_) { data = {detail: raw}; }
+      if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+      if (activity) activity.innerHTML = `<span>✓</span> ${data.status || "submitted"} · ${String(data.task_id || "").slice(0,12)}`;
+      setTimeout(() => { try { window.location.hash = "#tasks"; } catch (_) {} }, 120);
+    } catch (error) {
+      if (activity) activity.innerHTML = `<span>●</span> Task submission failed: ${error.message}`;
+    } finally {
+      run.disabled = false;
+      run.textContent = "Run Task";
     }
   });
 })();
