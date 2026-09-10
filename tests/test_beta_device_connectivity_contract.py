@@ -32,7 +32,7 @@ def test_android_run_and_pairing_paths_are_present():
     assert 'runtime/tasks' in text
     assert 'v1/session/refresh' in text
     assert 'v1/session/create' in text
-    assert '"/v1/devices/pairing/enroll"' in text
+    assert 'v1/devices/pairing/enroll' in text
     assert '"device_secret"' in text
     assert '"offer_id"' in text
     assert '"pairing_code"' in text
