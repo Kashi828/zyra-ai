@@ -86,9 +86,13 @@ jobs:
           TAG: v${{ steps.version.outputs.version }}
         shell: bash
         run: |
-          gh release create "$TAG" release-assets/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "ZYRA AI $TAG" \
-            --prerelease \
-            --generate-notes
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "ZYRA AI $TAG" \
+              --prerelease \
+              --generate-notes
+          fi
