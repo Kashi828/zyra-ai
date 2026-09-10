@@ -13,6 +13,8 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
@@ -129,8 +131,18 @@ jobs:
           mkdir -p release-assets/publish
           find release-assets/windows release-assets/android -maxdepth 1 -type f ! -name 'release-manifest.json' -exec cp {} release-assets/publish/ \;
           python scripts/release_manifest.py release-assets/publish release-assets/publish/release-manifest.json
-          printf '{"version":"%s","source_commit":"%s","workflow_run":"%s","assets":' "${{ steps.version.outputs.version }}" "${GITHUB_SHA}" "${GITHUB_RUN_ID}" > release-assets/publish/release-provenance.json
-          cat release-assets/publish/release-manifest.json | sed '1s/^{//' | sed 's/^/ /' >> release-assets/publish/release-provenance.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          manifest = json.loads(Path('release-assets/publish/release-manifest.json').read_text(encoding='utf-8'))
+          provenance = {
+              'version': '${{ steps.version.outputs.version }}',
+              'source_commit': '${GITHUB_SHA}',
+              'workflow_run': '${GITHUB_RUN_ID}',
+              'assets': manifest['assets'],
+          }
+          Path('release-assets/publish/release-provenance.json').write_text(json.dumps(provenance, indent=2) + '\n', encoding='utf-8')
+          PY
       - name: Generate Windows provenance attestation
         uses: actions/attest@v4
         with:
