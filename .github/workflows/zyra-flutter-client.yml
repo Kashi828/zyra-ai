@@ -1,0 +1,66 @@
+name: ZYRA Flutter Client
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - 'clients/zyra_flutter/**'
+      - '.github/workflows/zyra-flutter-client.yml'
+  workflow_dispatch:
+
+jobs:
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate platform scaffolding
+        working-directory: clients/zyra_flutter
+        run: flutter create --platforms=android,windows .
+      - name: Resolve packages
+        working-directory: clients/zyra_flutter
+        run: flutter pub get
+      - name: Analyze
+        working-directory: clients/zyra_flutter
+        run: flutter analyze
+      - name: Build Android beta APK
+        working-directory: clients/zyra_flutter
+        run: flutter build apk --debug
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: zyra-flutter-android-beta
+          path: clients/zyra_flutter/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+
+  windows:
+    name: Windows App
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Generate platform scaffolding
+        working-directory: clients/zyra_flutter
+        run: flutter create --platforms=android,windows .
+      - name: Resolve packages
+        working-directory: clients/zyra_flutter
+        run: flutter pub get
+      - name: Analyze
+        working-directory: clients/zyra_flutter
+        run: flutter analyze
+      - name: Build Windows beta app
+        working-directory: clients/zyra_flutter
+        run: flutter build windows
+      - name: Upload Windows app
+        uses: actions/upload-artifact@v4
+        with:
+          name: zyra-flutter-windows-beta
+          path: clients/zyra_flutter/build/windows/x64/runner/Release/**
+          if-no-files-found: error
