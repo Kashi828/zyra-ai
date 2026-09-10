@@ -61,10 +61,21 @@ def create_app(db_path=None, runner=None):
     register_runtime_routes(app, runtime, security.api_auth)
 
     from core.ecosystem_coordinator import EcosystemCoordinator
+    from core.persistent_ecosystem import PersistentEcosystemRegistry
     from api.ecosystem_routes import register_ecosystem_routes
     ecosystem = EcosystemCoordinator()
+    ecosystem_registry = PersistentEcosystemRegistry(security.store)
     app.state.ecosystem = ecosystem
-    register_ecosystem_routes(app, ecosystem, security.api_auth)
+    app.state.ecosystem_registry = ecosystem_registry
+    for device in ecosystem_registry.devices():
+        if not device.revoked:
+            ecosystem.register_device(
+                device.device_id,
+                device.device_type,
+                device.capabilities,
+                online=device.online,
+            )
+    register_ecosystem_routes(app, ecosystem, security.api_auth, ecosystem_registry)
 
     register_realtime_routes(app, security, event_hub)
     from api.voice_routes import register_voice_routes
