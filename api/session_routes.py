@@ -53,11 +53,43 @@ def register_session_routes(app, session_service):
 
     @app.post("/v1/session/list")
     def list_sessions(body: dict):
-        device_id, _ = _authenticate_session(session_service, body)
+        device_id, session_id = _authenticate_session(session_service, body)
+        device = session_service.store.get_device(device_id)
+        if not device:
+            raise HTTPException(status_code=401, detail="device not found")
         return {
             "ok": True,
-            "device_id": device_id,
-            "sessions": session_service.store.list_sessions(device_id),
+            "device": {
+                "device_id": device["device_id"],
+                "capabilities": sorted(device["capabilities"]),
+                "revoked": device["revoked"],
+                "created_at": int(device["created_at"]),
+            },
+            "sessions": session_service.store.list_sessions(
+                device_id,
+                current_session_id=session_id,
+            ),
+        }
+
+    @app.post("/v1/session/revoke")
+    def revoke_session(body: dict):
+        device_id, session_id = _authenticate_session(session_service, body)
+        target_session_id = str(body.get("target_session_id", ""))
+        if not target_session_id:
+            raise HTTPException(status_code=400, detail="target_session_id is required")
+
+        target = session_service.store.get_session(target_session_id)
+        if not target or target["device_id"] != device_id:
+            raise HTTPException(status_code=404, detail="session not found")
+        if target["revoked"] or target["expires_at"] <= __import__("time").time():
+            raise HTTPException(status_code=409, detail="session is already inactive")
+
+        session_service.store.revoke_session(target_session_id)
+        return {
+            "ok": True,
+            "revoked": True,
+            "session_id": target_session_id,
+            "current_session": target_session_id == session_id,
         }
 
     @app.post("/v1/session/logout")
