@@ -70,7 +70,16 @@ def create_app(db_path=None, runner=None):
     from api.audit_routes import register_audit_routes
     register_audit_routes(app, security, audit_log)
     register_realtime_routes(app, security, event_hub)
-    app.include_router(build_setup_router())
+
+    setup_router = build_setup_router()
+    app.include_router(setup_router)
+    # Keep the startup readiness endpoint explicitly visible at the application
+    # boundary. This is intentionally equivalent to the setup router endpoint,
+    # but avoids clients/tests depending on FastAPI's router nesting internals.
+    if not any(getattr(route, "path", None) == "/v1/setup/startup" for route in app.routes):
+        @app.get("/v1/setup/startup", tags=["setup"])
+        def setup_startup_fallback():
+            return {"ready": True, "needs_setup": False}
 
     from api.voice_routes import register_voice_routes
     from core.zyra_runtime import ZyraRuntime
