@@ -73,13 +73,18 @@ def create_app(db_path=None, runner=None):
 
     setup_router = build_setup_router()
     app.include_router(setup_router)
-    # Keep the startup readiness endpoint explicitly visible at the application
-    # boundary. This is intentionally equivalent to the setup router endpoint,
-    # but avoids clients/tests depending on FastAPI's router nesting internals.
+
+    # Compatibility registration: keep the public startup endpoint available
+    # even in environments where a router mount is normalized/flattened.
     if not any(getattr(route, "path", None) == "/v1/setup/startup" for route in app.routes):
+        from desktop.first_run_state import FirstRunState
+        from desktop.onboarding import OnboardingController
+        from desktop.startup_state import DesktopStartupController
+        startup_controller = DesktopStartupController(OnboardingController(FirstRunState()))
+
         @app.get("/v1/setup/startup", tags=["setup"])
-        def setup_startup_fallback():
-            return {"ready": True, "needs_setup": False}
+        def setup_startup_compat():
+            return startup_controller.decide().__dict__
 
     from api.voice_routes import register_voice_routes
     from core.zyra_runtime import ZyraRuntime
