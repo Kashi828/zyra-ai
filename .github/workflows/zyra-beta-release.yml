@@ -5,6 +5,10 @@ on:
     branches: [beta]
   workflow_dispatch:
 
+concurrency:
+  group: zyra-ai-beta-release
+  cancel-in-progress: true
+
 permissions:
   contents: write
   id-token: write
