@@ -62,9 +62,20 @@ def register_session_routes(app, session_service, audit_log=None):
     @app.post("/v1/session/list")
     def list_sessions(body: dict):
         device_id, session_id = _authenticate_session(session_service, body)
+        include_inactive = body.get("include_inactive", False)
+        if not isinstance(include_inactive, bool):
+            raise HTTPException(status_code=400, detail="include_inactive must be a boolean")
+
         device = session_service.store.get_device(device_id)
         if not device:
             raise HTTPException(status_code=401, detail="device not found")
+
+        sessions = session_service.store.list_sessions(
+            device_id,
+            include_inactive=include_inactive,
+            current_session_id=session_id,
+        )
+        active_count = sum(1 for item in sessions if item["active"])
         return {
             "ok": True,
             "device": {
@@ -73,10 +84,12 @@ def register_session_routes(app, session_service, audit_log=None):
                 "revoked": device["revoked"],
                 "created_at": int(device["created_at"]),
             },
-            "sessions": session_service.store.list_sessions(
-                device_id,
-                current_session_id=session_id,
-            ),
+            "summary": {
+                "total": len(sessions),
+                "active": active_count,
+                "inactive": len(sessions) - active_count,
+            },
+            "sessions": sessions,
         }
 
     @app.post("/v1/session/revoke")
