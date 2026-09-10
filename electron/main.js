@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session } = require("electron");
+const { app, BrowserWindow, ipcMain, session, safeStorage } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { spawn } = require("child_process");
@@ -8,6 +8,7 @@ let mainWindow = null;
 let bridge = null;
 let backend = null;
 let backendRestarts = 0;
+let authPromise = null;
 const MAX_BACKEND_RESTARTS = 2;
 
 function bundledExecutable(name) {
@@ -25,6 +26,11 @@ function pythonExecutable() {
 function waitForBackend(attempts = 60, delayMs = 250) {
   return new Promise((resolve, reject) => {
     let tries = 0;
+    const retry = () => {
+      tries += 1;
+      if (tries >= attempts) reject(new Error("ZYRA backend health check timed out"));
+      else setTimeout(check, delayMs);
+    };
     const check = () => {
       const req = http.get("http://127.0.0.1:8000/health", {timeout: 1000}, res => {
         let body = "";
@@ -41,11 +47,6 @@ function waitForBackend(attempts = 60, delayMs = 250) {
       });
       req.on("error", retry);
       req.on("timeout", () => { req.destroy(); retry(); });
-    };
-    const retry = () => {
-      tries += 1;
-      if (tries >= attempts) reject(new Error("ZYRA backend health check timed out"));
-      else setTimeout(check, delayMs);
     };
     check();
   });
@@ -65,15 +66,16 @@ function startBackend() {
   if (process.env.ZYRA_SKIP_BACKEND === "1") return;
   const bundled = bundledExecutable("zyra-backend");
   const env = runtimeEnvironment();
+  const host = process.env.ZYRA_BIND_HOST || (app.isPackaged ? "0.0.0.0" : "127.0.0.1");
   if (bundled) {
-    backend = spawn(bundled, [], {
+    backend = spawn(bundled, ["--host", host], {
       cwd: app.getPath("userData"),
       windowsHide: true,
       stdio: "ignore",
       env,
     });
   } else {
-    backend = spawn(pythonExecutable(), ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"], {
+    backend = spawn(pythonExecutable(), ["-m", "uvicorn", "main:app", "--host", host, "--port", "8000"], {
       cwd: path.resolve(__dirname, ".."),
       windowsHide: true,
       stdio: "ignore",
@@ -140,6 +142,84 @@ function rpc(method, args = {}) {
   });
 }
 
+function authFile() {
+  return path.join(app.getPath("userData"), "auth-state.bin");
+}
+
+function loadAuthState() {
+  try {
+    const raw = fs.readFileSync(authFile());
+    if (!safeStorage.isEncryptionAvailable()) return null;
+    const text = safeStorage.decryptString(raw);
+    return JSON.parse(text);
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveAuthState(state) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("Windows secure credential storage is unavailable");
+  }
+  const encrypted = safeStorage.encryptString(JSON.stringify(state));
+  fs.writeFileSync(authFile(), encrypted, {mode: 0o600});
+}
+
+function requestJson(urlPath, method, body) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? Buffer.from(JSON.stringify(body)) : null;
+    const req = http.request({
+      hostname: "127.0.0.1",
+      port: 8000,
+      path: urlPath,
+      method,
+      headers: payload ? {"Content-Type": "application/json", "Content-Length": payload.length} : {},
+      timeout: 5000,
+    }, res => {
+      let text = "";
+      res.on("data", chunk => text += chunk);
+      res.on("end", () => {
+        let parsed = {};
+        try { parsed = text ? JSON.parse(text) : {}; } catch (_) { parsed = {detail: text}; }
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve(parsed);
+        else reject(new Error(parsed.detail || `HTTP ${res.statusCode}`));
+      });
+    });
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("local API timeout")));
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+async function ensureAuthContext() {
+  if (authPromise) return authPromise;
+  authPromise = (async () => {
+    let state = loadAuthState();
+    const now = Math.floor(Date.now() / 1000);
+    if (state?.device_id && state?.session_id && state?.refresh_token && Number(state.expires_at || 0) > now + 60) {
+      return {device_id: state.device_id, session_id: state.session_id};
+    }
+
+    if (state?.device_id && state?.refresh_token) {
+      try {
+        const refreshed = await requestJson("/v1/session/refresh", "POST", {
+          device_id: state.device_id,
+          refresh_token: state.refresh_token,
+        });
+        state = {...state, ...refreshed};
+        saveAuthState(state);
+        return {device_id: state.device_id, session_id: state.session_id};
+      } catch (_) {}
+    }
+
+    const bootstrap = await requestJson("/v1/local/bootstrap", "POST", {});
+    saveAuthState(bootstrap);
+    return {device_id: bootstrap.device_id, session_id: bootstrap.session_id};
+  })().finally(() => { authPromise = null; });
+  return authPromise;
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -163,6 +243,7 @@ function registerIpc() {
   ipcMain.handle("zyra:voice-session", async () => rpc("voice.session.ensure"));
   ipcMain.handle("zyra:voice-auth", async () => rpc("voice.auth.headers"));
   ipcMain.handle("zyra:voice-logout", async () => rpc("voice.logout"));
+  ipcMain.handle("zyra:auth-context", async () => ensureAuthContext());
   ipcMain.handle("zyra:ping", async () => rpc("ping"));
 }
 
@@ -173,7 +254,7 @@ app.whenReady().then(async () => {
   registerIpc();
   startBackend();
   startNativeBridge();
-  try { await waitForBackend(); } catch (error) { console.error(error.message); }
+  try { await waitForBackend(); await ensureAuthContext(); } catch (error) { console.error(error.message); }
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -187,4 +268,4 @@ app.on("window-all-closed", () => {
 });
 
 // ZYRA_STARTUP_GATE: packaged builds prefer the bundled local runtime; development
-// builds retain the Python fallback. The renderer remains sandboxed and local-first.
+// builds retain the Python fallback. Credentials stay in Electron safeStorage.
