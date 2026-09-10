@@ -7,7 +7,7 @@ def test_desktop_auth_recovery_keeps_existing_device_usable():
     text = (ROOT / "electron" / "main.js").read_text(encoding="utf-8")
     assert '"/v1/session/refresh"' in text
     assert '"/v1/session/create"' in text
-    assert "state.device_secret" in text
+    assert "state?.device_secret" in text
 
 
 def test_desktop_pairing_shows_offer_id_and_code():
@@ -37,6 +37,6 @@ def test_android_run_and_pairing_paths_are_present():
 
 
 def test_android_pc_task_carries_authenticated_compatibility_fields():
-    text = (ROOT / "android" / "app/src/main/java/com/zyra/MainActivity.kt").read_text(encoding="utf-8")
+    text = (ROOT / "android" / "MainActivity.kt").read_text(encoding="utf-8") if (ROOT / "android" / "MainActivity.kt").exists() else (ROOT / "android" / "app/src/main/java/com/zyra/MainActivity.kt").read_text(encoding="utf-8")
     assert '.put("auth_key", sessionId)' in text
     assert '.put("client_key", sessionId)' in text
