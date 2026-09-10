@@ -10,11 +10,11 @@ from security.session_service import SessionService
 def provision(db):
     store = PersistentDeviceStore(db)
     device, secret = PersistentEnrollment(store).create_device({"pc.apps"})
-    return store, device
+    return store, device, secret
 
 
 def test_create_session_returns_refresh_token(tmp_path):
-    store, device = provision(tmp_path/"s.sqlite3")
+    store, device, _ = provision(tmp_path/"s.sqlite3")
     result = SessionService(store).create(device)
     assert result["session_id"].startswith("sess_")
     assert result["refresh_token"]
@@ -24,7 +24,7 @@ def test_create_session_returns_refresh_token(tmp_path):
 
 def test_refresh_rotates_token_and_session(tmp_path):
     db = tmp_path/"s.sqlite3"
-    store, device = provision(db)
+    store, device, _ = provision(db)
     service = SessionService(store)
     first = service.create(device)
     second = service.refresh(device, first["refresh_token"])
@@ -35,7 +35,7 @@ def test_refresh_rotates_token_and_session(tmp_path):
 
 def test_refresh_token_is_single_use(tmp_path):
     db = tmp_path/"s.sqlite3"
-    store, device = provision(db)
+    store, device, _ = provision(db)
     service = SessionService(store)
     first = service.create(device)
     service.refresh(device, first["refresh_token"])
@@ -63,7 +63,7 @@ def test_refresh_token_is_device_bound(tmp_path):
 
 
 def test_logout_revokes_session_and_refresh_token(tmp_path):
-    store, device = provision(tmp_path/"s.sqlite3")
+    store, device, _ = provision(tmp_path/"s.sqlite3")
     service = SessionService(store)
     first = service.create(device)
     service.logout(device, first["session_id"])
@@ -77,7 +77,7 @@ def test_logout_revokes_session_and_refresh_token(tmp_path):
 
 
 def test_device_logout_revokes_device(tmp_path):
-    store, device = provision(tmp_path/"s.sqlite3")
+    store, device, _ = provision(tmp_path/"s.sqlite3")
     service = SessionService(store)
     first = service.create(device)
     service.logout_device(device)
@@ -86,28 +86,34 @@ def test_device_logout_revokes_device(tmp_path):
 
 
 def test_session_routes_work(tmp_path):
-    db=tmp_path/"s.sqlite3"
-    _, device = provision(db)
-    client=TestClient(create_app(db))
-    created=client.post("/v1/session/create", json={"device_id":device})
+    db = tmp_path/"s.sqlite3"
+    _, device, secret = provision(db)
+    client = TestClient(create_app(db))
+    created = client.post(
+        "/v1/session/create",
+        json={"device_id": device, "device_secret": secret.hex()},
+    )
     assert created.status_code == 200
-    body=created.json()
-    refreshed=client.post("/v1/session/refresh", json={
-        "device_id":device,
-        "refresh_token":body["refresh_token"],
+    body = created.json()
+    refreshed = client.post("/v1/session/refresh", json={
+        "device_id": device,
+        "refresh_token": body["refresh_token"],
     })
     assert refreshed.status_code == 200
     assert refreshed.json()["session_id"] != body["session_id"]
 
 
 def test_reused_refresh_route_returns_401(tmp_path):
-    db=tmp_path/"s.sqlite3"
-    _, device = provision(db)
-    client=TestClient(create_app(db))
-    body=client.post("/v1/session/create",json={"device_id":device}).json()
-    assert client.post("/v1/session/refresh",json={
-        "device_id":device,"refresh_token":body["refresh_token"]
+    db = tmp_path/"s.sqlite3"
+    _, device, secret = provision(db)
+    client = TestClient(create_app(db))
+    body = client.post(
+        "/v1/session/create",
+        json={"device_id": device, "device_secret": secret.hex()},
+    ).json()
+    assert client.post("/v1/session/refresh", json={
+        "device_id": device, "refresh_token": body["refresh_token"]
     }).status_code == 200
-    assert client.post("/v1/session/refresh",json={
-        "device_id":device,"refresh_token":body["refresh_token"]
+    assert client.post("/v1/session/refresh", json={
+        "device_id": device, "refresh_token": body["refresh_token"]
     }).status_code == 401
