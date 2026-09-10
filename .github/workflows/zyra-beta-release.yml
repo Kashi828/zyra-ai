@@ -30,7 +30,18 @@ jobs:
           if (Test-Path requirements.txt) { python -m pip install -r requirements.txt }
           python -m pip install pytest pyinstaller
       - name: Python regression tests
-        run: python -m pytest -q
+        shell: pwsh
+        run: |
+          python -m pytest -q 2>&1 | Tee-Object -FilePath pytest-windows.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload Windows pytest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zyra-windows-pytest-diagnostics
+          path: pytest-windows.log
+          if-no-files-found: warn
+          retention-days: 7
       - name: Install npm dependencies
         run: npm install
       - name: Build self-contained Windows beta
@@ -129,7 +140,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p release-assets/publish
-          find release-assets/windows release-assets/android -maxdepth 1 -type f ! -name 'release-manifest.json' -exec cp {} release-assets/publish/ \;
+          find release-assets/windows release-assets/android -maxdepth 1 -type f ! -name 'release-manifest.json' -exec cp {} release-assets/publish/ \\
+          ;
           python scripts/release_manifest.py release-assets/publish release-assets/publish/release-manifest.json
           python - <<'PY'
           import json
@@ -161,10 +173,10 @@ jobs:
             gh release upload "$TAG" release-assets/publish/* --repo "$GITHUB_REPOSITORY" --clobber
             gh release edit "$TAG" --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" release-assets/publish/* \
-              --repo "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" \
-              --title "ZYRA AI $TAG" \
-              --prerelease \
+            gh release create "$TAG" release-assets/publish/* \\
+              --repo "$GITHUB_REPOSITORY" \\
+              --target "$GITHUB_SHA" \\
+              --title "ZYRA AI $TAG" \\
+              --prerelease \\
               --generate-notes
           fi
