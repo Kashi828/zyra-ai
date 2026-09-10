@@ -9,7 +9,7 @@ def _trusted_session(tmp_path):
     secret = b"a" * 32
     store.enroll_device("pc-01", secret, {"windows.files.read"})
     session = app.state.security_context.sessions.create("pc-01")
-    return app, session.session_id
+    return app, session["session_id"]
 
 
 def test_pairing_routes_are_authenticated_and_single_use(tmp_path):
