@@ -169,6 +169,13 @@ jobs:
         shell: bash
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            while IFS= read -r asset; do
+              case "$asset" in
+                *.exe|*.apk)
+                  gh release delete-asset "$TAG" "$asset" --repo "$GITHUB_REPOSITORY" --yes
+                  ;;
+              esac
+            done < <(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
             gh release upload "$TAG" release-assets/publish/* --repo "$GITHUB_REPOSITORY" --clobber
             gh release edit "$TAG" --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY"
           else
