@@ -45,6 +45,16 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    $("setupRefresh")?.addEventListener("click", async () => {
+      const button = $("setupRefresh");
+      if (button) button.disabled = true;
+      try {
+        await syncStartup();
+      } finally {
+        if (button) button.disabled = false;
+      }
+    });
+
     $("setupContinue")?.addEventListener("click", async () => {
       try {
         const check = await request("/v1/system/setup-check");
