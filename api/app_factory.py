@@ -60,6 +60,12 @@ def create_app(db_path=None, runner=None):
     from api.runtime_routes import register_runtime_routes
     register_runtime_routes(app, runtime, security.api_auth)
 
+    from core.ecosystem_coordinator import EcosystemCoordinator
+    from api.ecosystem_routes import register_ecosystem_routes
+    ecosystem = EcosystemCoordinator()
+    app.state.ecosystem = ecosystem
+    register_ecosystem_routes(app, ecosystem, security.api_auth)
+
     register_realtime_routes(app, security, event_hub)
     from api.voice_routes import register_voice_routes
     voice_stt = None
