@@ -21,6 +21,16 @@ def _authenticate_device(session_service, body: dict) -> str:
     return device_id
 
 
+def _authenticate_session(session_service, body: dict) -> tuple[str, str]:
+    device_id = str(body.get("device_id", ""))
+    session_id = str(body.get("session_id", ""))
+    if not device_id or not session_id:
+        raise HTTPException(status_code=401, detail="device_id and session_id are required")
+    if not session_service.store.validate_session(session_id, device_id):
+        raise HTTPException(status_code=401, detail="invalid or expired session")
+    return device_id, session_id
+
+
 def register_session_routes(app, session_service):
     @app.post("/v1/session/create")
     def create_session(body: dict):
@@ -41,16 +51,23 @@ def register_session_routes(app, session_service):
         except PermissionError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
 
+    @app.post("/v1/session/list")
+    def list_sessions(body: dict):
+        device_id, _ = _authenticate_session(session_service, body)
+        return {
+            "ok": True,
+            "device_id": device_id,
+            "sessions": session_service.store.list_sessions(device_id),
+        }
+
     @app.post("/v1/session/logout")
     def logout(body: dict):
-        device_id = _authenticate_device(session_service, body)
-        session_id = str(body.get("session_id", ""))
-        if not session_id:
-            raise HTTPException(status_code=400, detail="session_id is required")
-        if not session_service.store.validate_session(session_id, device_id):
-            raise HTTPException(status_code=401, detail="invalid or expired session")
+        device_id, session_id = _authenticate_session(session_service, body)
+        target_session = str(body.get("target_session_id") or session_id)
+        if target_session != session_id:
+            raise HTTPException(status_code=403, detail="a session can only revoke itself")
         session_service.logout(device_id, session_id)
-        return {"ok": True, "logged_out": True}
+        return {"ok": True, "logged_out": True, "session_id": session_id}
 
     @app.post("/v1/session/logout-device")
     def logout_device(body: dict):
