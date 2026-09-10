@@ -28,6 +28,9 @@ def create_app(db_path=None, runner=None):
         allow_headers=["*"],
     )
     security = build_production_security(db_path)
+    from security.audit_log import AuditLog
+    audit_log = AuditLog(db_path)
+    app.state.audit_log = audit_log
     event_hub = RealtimeEventHub()
     bridge = register_production_command_routes(app, security, runner=runner)
 
@@ -42,8 +45,14 @@ def create_app(db_path=None, runner=None):
             device_id=request.device_id,
             command_id=command_id,
             status=result.status,
-            payload={"action": request.action, "message": result.message},
+            payload={"action": result.action, "message": result.message},
         ))
+        audit_log.record(
+            "command.completed" if result.accepted else "command.failed",
+            request.device_id,
+            request.session_id,
+            {"action": request.action, "status": result.status, "command_id": command_id},
+        )
         return result
 
     bridge.execute = execute_and_publish
@@ -51,6 +60,10 @@ def create_app(db_path=None, runner=None):
     register_session_routes(app, security.sessions)
     from api.health_routes import register_health_routes
     register_health_routes(app)
+    from api.emergency_stop_routes import register_emergency_stop_routes
+    register_emergency_stop_routes(app, security)
+    from api.audit_routes import register_audit_routes
+    register_audit_routes(app, security, audit_log)
     register_realtime_routes(app, security, event_hub)
     from api.voice_routes import register_voice_routes
     from core.zyra_runtime import ZyraRuntime
