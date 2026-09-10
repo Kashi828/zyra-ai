@@ -11,6 +11,21 @@ class ToolSpec:
 
 
 class WindowsCommandRegistry:
+    """Small allowlisted Windows action registry; no arbitrary shell commands."""
+
+    _KNOWN_APPS = {
+        "calculator": "calc.exe",
+        "calc": "calc.exe",
+        "notepad": "notepad.exe",
+        "paint": "mspaint.exe",
+        "mspaint": "mspaint.exe",
+        "explorer": "explorer.exe",
+        "file explorer": "explorer.exe",
+        "task manager": "taskmgr.exe",
+        "settings": "ms-settings:",
+        "windows settings": "ms-settings:",
+    }
+
     def __init__(self, runner=None):
         self._runner = runner or self._default_runner
         self._tools = {
@@ -19,14 +34,27 @@ class WindowsCommandRegistry:
             "open_url": ToolSpec("open_url", "windows.browser", False),
         }
 
-    @staticmethod
-    def _default_runner(action: str, payload: dict) -> str:
+    @classmethod
+    def _resolve_app(cls, name: str) -> str:
+        normalized = name.strip().lower()
+        if normalized in cls._KNOWN_APPS:
+            return cls._KNOWN_APPS[normalized]
+        # Direct executable paths are permitted only when they resolve to an
+        # existing file. There is never a command interpreter involved.
+        candidate = os.path.expandvars(os.path.expanduser(name.strip()))
+        if candidate.lower().endswith(".exe") and os.path.isfile(candidate):
+            return candidate
+        raise ValueError("unsupported application; use an allowlisted app or an existing .exe path")
+
+    @classmethod
+    def _default_runner(cls, action: str, payload: dict) -> str:
         if action == "open_app":
-            name = str(payload.get("name", "")).strip()
-            if not name:
-                raise ValueError("application name required")
-            subprocess.Popen(["cmd", "/c", "start", "", name], shell=False)
-            return f"launched:{name}"
+            target = cls._resolve_app(str(payload.get("name", "")))
+            if target == "ms-settings:":
+                os.startfile(target)
+            else:
+                subprocess.Popen([target], shell=False)
+            return f"launched:{target}"
         if action == "open_folder":
             path = os.path.abspath(str(payload.get("path", "")))
             if not os.path.isdir(path):
