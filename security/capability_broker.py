@@ -35,6 +35,9 @@ CAPABILITIES: dict[str, CapabilitySpec] = {
     "windows.apps": CapabilitySpec("windows.apps", CapabilityRisk.MEDIUM, "Launch or control approved desktop applications"),
     "windows.admin": CapabilitySpec("windows.admin", CapabilityRisk.HIGH, "Perform an explicitly approved administrative operation"),
     "windows.system": CapabilitySpec("windows.system", CapabilityRisk.HIGH, "Perform an explicitly approved system operation"),
+    "iot.telemetry": CapabilitySpec("iot.telemetry", CapabilityRisk.LOW, "Read telemetry from an enrolled IoT device"),
+    "iot.gpio": CapabilitySpec("iot.gpio", CapabilityRisk.MEDIUM, "Control explicitly exposed GPIO outputs on an enrolled IoT device"),
+    "iot.config": CapabilitySpec("iot.config", CapabilityRisk.HIGH, "Change configuration on an enrolled IoT device"),
 }
 
 
