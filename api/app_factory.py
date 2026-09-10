@@ -51,12 +51,17 @@ def create_app(db_path=None, runner=None):
     register_session_routes(app, security.sessions)
     from api.health_routes import register_health_routes
     register_health_routes(app)
+
+    from api.setup_routes import build_setup_router
+    app.include_router(build_setup_router())
+
+    from core.zyra_runtime import ZyraRuntime
+    runtime = ZyraRuntime()
+    from api.runtime_routes import register_runtime_routes
+    register_runtime_routes(app, runtime, security.api_auth)
+
     register_realtime_routes(app, security, event_hub)
     from api.voice_routes import register_voice_routes
-    from core.zyra_runtime import ZyraRuntime
-
-    runtime = ZyraRuntime()
-    app.state.voice_runtime = runtime
     voice_stt = None
     voice_tts = None
 
