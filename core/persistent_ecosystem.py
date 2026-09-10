@@ -10,6 +10,7 @@ class PersistentEcosystemDevice:
     online: bool
     last_seen: int
     revoked: bool
+    endpoint: str = ""
 
 
 class PersistentEcosystemRegistry:
@@ -18,8 +19,8 @@ class PersistentEcosystemRegistry:
     def __init__(self, store):
         self.store = store
 
-    def register(self, device_id, device_type, display_name="", online=True):
-        self.store.upsert_ecosystem_device(device_id, device_type, display_name, online)
+    def register(self, device_id, device_type, display_name="", online=True, endpoint=""):
+        self.store.upsert_ecosystem_device(device_id, device_type, display_name, online, endpoint)
         return self.get(device_id)
 
     def set_online(self, device_id, online):
@@ -27,10 +28,8 @@ class PersistentEcosystemRegistry:
         return self.get(device_id)
 
     def get(self, device_id):
-        for item in self.store.list_ecosystem_devices():
-            if item["device_id"] == device_id:
-                return self._convert(item)
-        return None
+        item = self.store.get_ecosystem_device(device_id)
+        return self._convert(item) if item else None
 
     def devices(self):
         return tuple(self._convert(item) for item in self.store.list_ecosystem_devices())
@@ -45,4 +44,5 @@ class PersistentEcosystemRegistry:
             online=item["online"],
             last_seen=item["last_seen"],
             revoked=item["revoked"],
+            endpoint=item.get("endpoint", ""),
         )
