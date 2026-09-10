@@ -10,7 +10,8 @@
     "build": "electron-builder --win nsis --x64",
     "diagnostics": "python scripts/bootstrap_windows.py --json",
     "prepare:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare_windows.ps1",
-    "build:win": "electron-builder --win nsis --x64",
+    "bundle:win-runtime": "python scripts/bundle_windows_runtime.py",
+    "build:win": "npm run bundle:win-runtime && electron-builder --win nsis --x64",
     "beta:win": "powershell -ExecutionPolicy Bypass -File scripts/build_windows_beta.ps1"
   },
   "devDependencies": {
@@ -24,7 +25,7 @@
     "files": [
       "electron/**/*", "desktop/**/*", "core/**/*", "api/**/*", "security/**/*",
       "services/**/*", "config/**/*", "communication/**/*", "main.py",
-      "requirements*.txt", "mission-*.md", "MISSION_38.md"
+      "requirements*.txt", "mission-*.md", "MISSION_38.md", "runtime/**/*"
     ],
     "win": {
       "target": [{"target": "nsis", "arch": ["x64"]}],
