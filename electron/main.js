@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, session } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const { spawn } = require("child_process");
 const http = require("http");
 
@@ -9,11 +10,17 @@ let backend = null;
 let backendRestarts = 0;
 const MAX_BACKEND_RESTARTS = 2;
 
+function bundledExecutable(name) {
+  if (!app.isPackaged) return null;
+  const exe = process.platform === "win32" ? `${name}.exe` : name;
+  const candidate = path.join(process.resourcesPath, "runtime", name, exe);
+  return fs.existsSync(candidate) ? candidate : null;
+}
+
 function pythonExecutable() {
   if (process.env.ZYRA_PYTHON) return process.env.ZYRA_PYTHON;
   return process.platform === "win32" ? "python" : "python3";
 }
-
 
 function waitForBackend(attempts = 60, delayMs = 250) {
   return new Promise((resolve, reject) => {
@@ -46,14 +53,22 @@ function waitForBackend(attempts = 60, delayMs = 250) {
 
 function startBackend() {
   if (process.env.ZYRA_SKIP_BACKEND === "1") return;
-  const python = pythonExecutable();
-  backend = spawn(python, ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"], {
-    cwd: path.resolve(__dirname, ".."),
-    windowsHide: true,
-    stdio: "ignore",
-  });
+  const bundled = bundledExecutable("zyra-backend");
+  if (bundled) {
+    backend = spawn(bundled, [], {
+      cwd: path.dirname(bundled),
+      windowsHide: true,
+      stdio: "ignore",
+    });
+  } else {
+    backend = spawn(pythonExecutable(), ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"], {
+      cwd: path.resolve(__dirname, ".."),
+      windowsHide: true,
+      stdio: "ignore",
+    });
+  }
   backend.on("error", () => { backend = null; });
-  backend.on("exit", (_code, _signal) => {
+  backend.on("exit", () => {
     backend = null;
     if (!mainWindow || backendRestarts >= MAX_BACKEND_RESTARTS) return;
     backendRestarts += 1;
@@ -63,12 +78,20 @@ function startBackend() {
 
 function startNativeBridge() {
   if (process.env.ZYRA_SKIP_NATIVE_BRIDGE === "1") return;
-  const python = pythonExecutable();
-  bridge = spawn(python, ["-m", "desktop.native_bridge"], {
-    cwd: path.resolve(__dirname, ".."),
-    windowsHide: true,
-    stdio: ["pipe", "pipe", "ignore"],
-  });
+  const bundled = bundledExecutable("zyra-native-bridge");
+  if (bundled) {
+    bridge = spawn(bundled, [], {
+      cwd: path.dirname(bundled),
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+  } else {
+    bridge = spawn(pythonExecutable(), ["-m", "desktop.native_bridge"], {
+      cwd: path.resolve(__dirname, ".."),
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+  }
   bridge.on("error", () => { bridge = null; });
 }
 
@@ -90,14 +113,9 @@ function rpc(method, args = {}) {
         const result = JSON.parse(line);
         if (result.ok === false) reject(new Error(result.error || "native bridge error"));
         else resolve(result);
-      } catch (error) {
-        reject(error);
-      }
+      } catch (error) { reject(error); }
     };
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("native bridge timeout"));
-    }, 5000);
+    const timer = setTimeout(() => { cleanup(); reject(new Error("native bridge timeout")); }, 5000);
     const cleanup = () => {
       clearTimeout(timer);
       bridge?.stdout?.off("data", onData);
@@ -122,40 +140,26 @@ function createWindow() {
       sandbox: true,
     },
   });
-
-  // Keep the shell on local app assets only.
   mainWindow.loadFile(path.join(__dirname, "..", "desktop", "index.html"));
   mainWindow.on("closed", () => { mainWindow = null; });
 }
 
 function registerIpc() {
-  ipcMain.handle("zyra:voice-session", async () => {
-    return rpc("voice.session.ensure");
-  });
-  ipcMain.handle("zyra:voice-auth", async () => {
-    return rpc("voice.auth.headers");
-  });
-  ipcMain.handle("zyra:voice-logout", async () => {
-    return rpc("voice.logout");
-  });
+  ipcMain.handle("zyra:voice-session", async () => rpc("voice.session.ensure"));
+  ipcMain.handle("zyra:voice-auth", async () => rpc("voice.auth.headers"));
+  ipcMain.handle("zyra:voice-logout", async () => rpc("voice.logout"));
   ipcMain.handle("zyra:ping", async () => rpc("ping"));
 }
 
 app.whenReady().then(async () => {
-  // Do not grant the renderer arbitrary file/network privileges.
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     callback(permission === "media");
   });
   registerIpc();
   startBackend();
   startNativeBridge();
-  try {
-    await waitForBackend();
-  } catch (error) {
-    console.error(error.message);
-  }
+  try { await waitForBackend(); } catch (error) { console.error(error.message); }
   createWindow();
-
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -167,6 +171,5 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-
-// ZYRA_STARTUP_GATE: keep backend/renderer startup local-first. The renderer gates
-// its workspace on /v1/setup/startup; this marker documents the lifecycle contract.
+// ZYRA_STARTUP_GATE: packaged builds prefer the bundled local runtime; development
+// builds retain the Python fallback. The renderer remains sandboxed and local-first.
