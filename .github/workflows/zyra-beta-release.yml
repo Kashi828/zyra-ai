@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   windows:
@@ -54,10 +56,16 @@ jobs:
           } finally {
             if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
           }
+      - name: Generate Windows asset manifest
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-assets | Out-Null
+          Copy-Item dist\*.exe release-assets\
+          python scripts\release_manifest.py release-assets release-assets\release-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: zyra-windows-beta
-          path: dist/*.exe
+          path: release-assets/*
           if-no-files-found: error
           retention-days: 7
 
@@ -81,30 +89,56 @@ jobs:
       - name: Build Android beta APK
         working-directory: android
         run: gradle --no-daemon :app:assembleDebug
+      - name: Generate Android asset manifest
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          cp android/app/build/outputs/apk/debug/*.apk release-assets/
+          python scripts/release_manifest.py release-assets release-assets/release-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: zyra-android-beta
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: release-assets/*
           if-no-files-found: error
           retention-days: 7
 
   publish:
     needs: [windows, android]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: zyra-windows-beta
-          path: release-assets
+          path: release-assets/windows
       - uses: actions/download-artifact@v4
         with:
           name: zyra-android-beta
-          path: release-assets
+          path: release-assets/android
       - name: Read beta version
         id: version
         shell: bash
         run: echo "version=$(tr -d '[:space:]' < release/beta-version.txt)" >> "$GITHUB_OUTPUT"
+      - name: Build release manifest
+        shell: bash
+        run: |
+          mkdir -p release-assets/publish
+          find release-assets/windows release-assets/android -maxdepth 1 -type f ! -name 'release-manifest.json' -exec cp {} release-assets/publish/ \;
+          python scripts/release_manifest.py release-assets/publish release-assets/publish/release-manifest.json
+          printf '{"version":"%s","source_commit":"%s","workflow_run":"%s","assets":' "${{ steps.version.outputs.version }}" "${GITHUB_SHA}" "${GITHUB_RUN_ID}" > release-assets/publish/release-provenance.json
+          cat release-assets/publish/release-manifest.json | sed '1s/^{//' | sed 's/^/ /' >> release-assets/publish/release-provenance.json
+      - name: Generate Windows provenance attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: release-assets/publish/*.exe
+      - name: Generate Android provenance attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: release-assets/publish/*.apk
       - name: Publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,9 +146,10 @@ jobs:
         shell: bash
         run: |
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$TAG" release-assets/publish/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" release-assets/* \
+            gh release create "$TAG" release-assets/publish/* \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "ZYRA AI $TAG" \
