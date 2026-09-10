@@ -85,13 +85,14 @@ def test_session_revoke_rejects_missing_and_inactive_targets(tmp_path):
     app = create_app(db_path=str(tmp_path / "security.sqlite3"))
     secret = _enroll(app.state.security_context.store)
     client = TestClient(app)
-    session = _create_session(client, secret)
+    current = _create_session(client, secret)
+    target = _create_session(client, secret)
 
     missing = client.post(
         "/v1/session/revoke",
         json={
             "device_id": "dev-test",
-            "session_id": session,
+            "session_id": current,
             "target_session_id": "sess_missing",
         },
     )
@@ -101,8 +102,8 @@ def test_session_revoke_rejects_missing_and_inactive_targets(tmp_path):
         "/v1/session/revoke",
         json={
             "device_id": "dev-test",
-            "session_id": session,
-            "target_session_id": session,
+            "session_id": current,
+            "target_session_id": target,
         },
     )
     assert ok.status_code == 200
@@ -111,8 +112,8 @@ def test_session_revoke_rejects_missing_and_inactive_targets(tmp_path):
         "/v1/session/revoke",
         json={
             "device_id": "dev-test",
-            "session_id": session,
-            "target_session_id": session,
+            "session_id": current,
+            "target_session_id": target,
         },
     )
-    assert inactive.status_code == 401
+    assert inactive.status_code == 409
