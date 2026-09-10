@@ -28,6 +28,9 @@ def create_app(db_path=None, runner=None):
         allow_headers=["*"],
     )
     security = build_production_security(db_path)
+    from security.audit_log import AuditLog
+    audit_log = AuditLog(db_path)
+    app.state.audit_log = audit_log
     event_hub = RealtimeEventHub()
     bridge = register_production_command_routes(app, security, runner=runner)
 
@@ -44,47 +47,29 @@ def create_app(db_path=None, runner=None):
             status=result.status,
             payload={"action": request.action, "message": result.message},
         ))
+        audit_log.record(
+            "command.completed" if result.accepted else "command.failed",
+            request.device_id,
+            request.session_id,
+            {"action": request.action, "status": result.status, "command_id": command_id},
+        )
         return result
 
     bridge.execute = execute_and_publish
 
-    register_session_routes(app, security.sessions)
+    register_session_routes(app, security.sessions, audit_log)
     from api.health_routes import register_health_routes
     register_health_routes(app)
-
-    from api.setup_routes import build_setup_router
-    app.include_router(build_setup_router())
-
-    from core.zyra_runtime import ZyraRuntime
-    runtime = ZyraRuntime()
-    from api.runtime_routes import register_runtime_routes
-    register_runtime_routes(app, runtime, security.api_auth)
-
-    from core.ecosystem_coordinator import EcosystemCoordinator
-    from core.persistent_ecosystem import PersistentEcosystemRegistry
-    from api.ecosystem_routes import register_ecosystem_routes
-    from api.ecosystem_pairing_routes import register_ecosystem_pairing_routes
-    ecosystem = EcosystemCoordinator()
-    ecosystem_registry = PersistentEcosystemRegistry(security.store)
-    app.state.ecosystem = ecosystem
-    app.state.ecosystem_registry = ecosystem_registry
-    for device in ecosystem_registry.devices():
-        if not device.revoked:
-            ecosystem.register_device(
-                device.device_id,
-                device.device_type,
-                device.capabilities,
-                online=device.online,
-            )
-    register_ecosystem_routes(app, ecosystem, security.api_auth, ecosystem_registry)
-    register_ecosystem_pairing_routes(
-        app,
-        auth_guard=security.api_auth,
-        registry=ecosystem_registry,
-    )
-
+    from api.emergency_stop_routes import register_emergency_stop_routes
+    register_emergency_stop_routes(app, security)
+    from api.audit_routes import register_audit_routes
+    register_audit_routes(app, security, audit_log)
     register_realtime_routes(app, security, event_hub)
     from api.voice_routes import register_voice_routes
+    from core.zyra_runtime import ZyraRuntime
+
+    runtime = ZyraRuntime()
+    app.state.voice_runtime = runtime
     voice_stt = None
     voice_tts = None
 
@@ -153,4 +138,40 @@ def create_app(db_path=None, runner=None):
         event_bridge=app.state.task_realtime_bridge,
     )
     register_recovery_routes(app, app.state.recovery_reconciler, app.state.workflow_resume, security.api_auth)
+
+    from core.ecosystem_coordinator import EcosystemCoordinator
+    from core.persistent_ecosystem import PersistentEcosystemRegistry
+    from api.ecosystem_routes import register_ecosystem_routes
+    from api.ecosystem_pairing_routes import register_ecosystem_pairing_routes
+    ecosystem = EcosystemCoordinator()
+    ecosystem_registry = PersistentEcosystemRegistry(security.store)
+    app.state.ecosystem = ecosystem
+    app.state.ecosystem_registry = ecosystem_registry
+    for device in ecosystem_registry.devices():
+        if not device.revoked:
+            ecosystem.register_device(
+                device.device_id,
+                device.device_type,
+                device.capabilities,
+                online=device.online,
+            )
+    register_ecosystem_routes(app, ecosystem, security.api_auth, ecosystem_registry)
+    register_ecosystem_pairing_routes(
+        app,
+        auth_guard=security.api_auth,
+        registry=ecosystem_registry,
+    )
+
+    from security.capability_authorizer import CapabilityAuthorizer
+    from security.pairing_enrollment import PairingEnrollmentService
+    from api.pairing_enrollment_routes import register_pairing_enrollment_routes
+    app.state.pairing_capabilities = CapabilityAuthorizer()
+    app.state.pairing_enrollment = PairingEnrollmentService()
+    register_pairing_enrollment_routes(
+        app,
+        app.state.pairing_enrollment,
+        app.state.pairing_capabilities,
+        security.api_auth,
+        security.store,
+    )
     return app
