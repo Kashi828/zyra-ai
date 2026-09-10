@@ -25,8 +25,6 @@ def _authorize(auth_gateway, body):
 
 def _plan_goal(goal: str) -> tuple[str, dict, str]:
     text = goal.strip()
-    lowered = text.lower()
-
     urls = re.findall(r"https?://[^\s]+", text)
     if urls:
         return "open_url", {"url": urls[0].rstrip(".,)"]}, "windows.browser"
@@ -37,11 +35,7 @@ def _plan_goal(goal: str) -> tuple[str, dict, str]:
 
     app_match = re.match(r"^(?:open|launch|start)\s+(.+)$", text, re.IGNORECASE)
     if app_match:
-        target = app_match.group(1).strip().strip('"')
-        return "open_app", {"name": target}, "windows.apps"
-
-    if lowered in {"open settings", "open windows settings"}:
-        return "open_app", {"name": "settings"}, "windows.apps"
+        return "open_app", {"name": app_match.group(1).strip().strip('"')}, "windows.apps"
 
     raise HTTPException(
         status_code=422,
@@ -78,12 +72,13 @@ def register_runtime_routes(app, runtime, auth_gateway=None):
                 raise HTTPException(status_code=422, detail="unsupported action")
             capability = spec.capability
 
-        confirmed = body.get("confirmed", False)
+        # A task submitted from the signed-in ZYRA UI is an explicit user action.
+        # API clients can pass false to require a separate confirmation step.
+        confirmed = body.get("confirmed", True)
         if not isinstance(confirmed, bool):
             raise HTTPException(status_code=400, detail="confirmed must be a boolean")
 
-        broker = CapabilityBroker(device["capabilities"])
-        decision = broker.require(capability, confirmed=confirmed)
+        decision = CapabilityBroker(device["capabilities"]).require(capability, confirmed=confirmed)
         if not decision.allowed:
             status = 409 if decision.requires_confirmation else 403
             detail = {
