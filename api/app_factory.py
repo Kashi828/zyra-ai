@@ -1,7 +1,9 @@
 try:
     from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
 except ImportError:  # pragma: no cover
     FastAPI = None
+    CORSMiddleware = None
 
 from api.production_security import build_production_security
 from api.production_command_routes import register_production_command_routes
@@ -16,6 +18,14 @@ def create_app(db_path="data/zyra_security.sqlite3", runner=None):
     if FastAPI is None:
         raise RuntimeError("FastAPI is required to create the API application")
     app = FastAPI(title="ZYRA AI")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["null"],
+        allow_origin_regex=r"^https?://(?:127\\.0\\.0\\.1|localhost)(?::\\d+)?$",
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     security = build_production_security(db_path)
     event_hub = RealtimeEventHub()
     bridge = register_production_command_routes(app, security, runner=runner)
@@ -96,8 +106,7 @@ def create_app(db_path="data/zyra_security.sqlite3", runner=None):
     from core.task_control import TaskControlRegistry
     from api.task_events_routes import register_task_event_routes
     app.state.task_realtime_bridge = TaskRealtimeBridge(event_hub)
-    from security.persistent_task_store import PersistentTaskStore
-    task_store = PersistentTaskStore(db_path)
+    task_store = __import__("security.persistent_task_store", fromlist=["PersistentTaskStore"]).PersistentTaskStore(db_path)
     app.state.task_store = task_store
     app.state.task_controls = TaskControlRegistry(app.state.task_realtime_bridge, task_store)
     app.state.task_controls.bind_store(task_store)
