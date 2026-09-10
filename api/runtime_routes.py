@@ -27,7 +27,7 @@ def _plan_goal(goal: str) -> tuple[str, dict, str]:
     text = goal.strip()
     urls = re.findall(r"https?://[^\s]+", text)
     if urls:
-        return "open_url", {"url": urls[0].rstrip(".,)"]}, "windows.browser"
+        return "open_url", {"url": urls[0].rstrip(".,)")}, "windows.browser"
 
     folder_match = re.match(r"^(?:open|show)\s+(?:folder|directory)\s+(.+)$", text, re.IGNORECASE)
     if folder_match:
