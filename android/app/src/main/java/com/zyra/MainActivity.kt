@@ -178,7 +178,7 @@ class MainActivity : Activity() {
         connect.addView(label("CONNECT WINDOWS PC", 12f, muted))
         pcUrlInput = EditText(this).apply {
             hint = "http://192.168.x.x:8000"
-            text = prefs.getString("pc_url", "") ?: ""
+            setText(prefs.getString("pc_url", "") ?: "")
             textSize = 14f
             setTextColor(primaryText)
             setHintTextColor(muted)
@@ -208,7 +208,7 @@ class MainActivity : Activity() {
 
         root.addView(space(22))
         val footer = TextView(this).apply {
-            text = "ZYRA AI  •  Phone + Windows ecosystem  •  v0.1.0-beta.1"
+            text = "ZYRA AI  •  Phone + Windows ecosystem  •  v0.1.0-beta.2"
             textSize = 12f
             setTextColor(Color.rgb(105, 112, 130))
             gravity = Gravity.CENTER
@@ -238,76 +238,56 @@ class MainActivity : Activity() {
             val request = Request.Builder().url("$base/v1/runtime/tasks").post(body).build()
             http.newCall(request).enqueue(object : okhttp3.Callback {
                 override fun onFailure(call: Call, e: IOException) {
-                    runOnUiThread { activityLog.text = "Windows agent unavailable. Check the PC URL and network." }
+                    runOnUiThread { activityLog.text = "PC connection failed: ${e.message ?: "unknown error"}" }
                 }
                 override fun onResponse(call: Call, response: Response) {
                     response.use {
-                        val text = it.body?.string().orEmpty()
                         runOnUiThread {
-                            if (it.isSuccessful) {
-                                val taskId = try { JSONObject(text).optString("task_id", "queued") } catch (_: Exception) { "queued" }
-                                activityLog.text = "Task handed to Windows agent. ID: $taskId"
+                            if (response.isSuccessful) {
+                                prefs.edit().putString("pc_url", base).apply()
                                 pcState.text = "Connected"
                                 pcState.setTextColor(success)
+                                activityLog.text = "Task handed to the Windows agent."
                             } else {
-                                activityLog.text = "Windows agent rejected the task (HTTP ${it.code})."
+                                activityLog.text = "Windows agent rejected the task (${response.code})."
                             }
                         }
                     }
                 }
             })
-            return
-        }
-        val lower = task.lowercase()
-        when {
-            lower.startsWith("open http://") || lower.startsWith("open https://") -> {
-                val url = task.substringAfter("open ").trim()
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                activityLog.text = "Opened $url on this phone."
-            }
-            lower.startsWith("remember ") -> {
-                val note = task.substringAfter("remember ").trim()
-                prefs.edit().putString("last_note", note).apply()
-                activityLog.text = "Saved locally: $note"
-            }
-            lower == "what did i ask you to remember" -> {
-                activityLog.text = prefs.getString("last_note", "Nothing saved yet.") ?: "Nothing saved yet."
-            }
-            else -> activityLog.text = "Phone agent received the task. Local execution is limited to safe device actions; use On PC for protected Windows workflows."
+        } else {
+            activityLog.text = "Phone agent received the task."
         }
     }
 
     private fun connectToPc() {
         val base = pcUrlInput.text.toString().trim().trimEnd('/')
         if (!isAllowedPcUrl(base)) {
-            activityLog.text = "Use a local/LAN Windows address (127.0.0.1, 10.x, 172.16–31.x, 192.168.x, or .local)."
+            activityLog.text = "Enter a local/LAN Windows address first."
             return
         }
-        prefs.edit().putString("pc_url", base).apply()
-        pcState.text = "Checking…"
-        pcState.setTextColor(warning)
-        activityLog.text = "Checking trusted PC endpoint…"
+        activityLog.text = "Checking Windows agent…"
         val request = Request.Builder().url("$base/health").get().build()
         http.newCall(request).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: Call, e: IOException) {
                 runOnUiThread {
                     pcState.text = "Offline"
-                    pcState.setTextColor(muted)
-                    activityLog.text = "Could not reach the Windows agent."
+                    pcState.setTextColor(warning)
+                    activityLog.text = "Windows agent unavailable: ${e.message ?: "connection failed"}"
                 }
             }
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     runOnUiThread {
-                        if (it.isSuccessful) {
+                        if (response.isSuccessful) {
+                            prefs.edit().putString("pc_url", base).apply()
                             pcState.text = "Connected"
                             pcState.setTextColor(success)
-                            modeLabel.text = "●  Ecosystem linked"
-                            activityLog.text = "Windows agent connected. Phone and PC share the ZYRA ecosystem."
+                            activityLog.text = "Windows agent connected."
                         } else {
                             pcState.text = "Error"
                             pcState.setTextColor(warning)
-                            activityLog.text = "Windows agent returned HTTP ${it.code}."
+                            activityLog.text = "Windows agent returned HTTP ${response.code}."
                         }
                     }
                 }
@@ -317,52 +297,51 @@ class MainActivity : Activity() {
 
     private fun isAllowedPcUrl(value: String): Boolean {
         return try {
-            val host = URI(value).host?.lowercase() ?: return false
-            host == "localhost" || host == "127.0.0.1" || host.endsWith(".local") ||
-                host.startsWith("10.") || host.startsWith("192.168.") ||
-                host.startsWith("172.16.") || host.startsWith("172.17.") || host.startsWith("172.18.") ||
-                host.startsWith("172.19.") || host.startsWith("172.20.") || host.startsWith("172.21.") ||
-                host.startsWith("172.22.") || host.startsWith("172.23.") || host.startsWith("172.24.") ||
-                host.startsWith("172.25.") || host.startsWith("172.26.") || host.startsWith("172.27.") ||
-                host.startsWith("172.28.") || host.startsWith("172.29.") || host.startsWith("172.30.") ||
-                host.startsWith("172.31.")
-        } catch (_: Exception) { false }
+            val uri = URI(value)
+            val host = uri.host ?: return false
+            val schemeOk = uri.scheme == "http" || uri.scheme == "https"
+            val localHost = host == "localhost" || host == "127.0.0.1" || host.endsWith(".local")
+            val privateIp = host.matches(Regex("^10\\..*")) ||
+                host.matches(Regex("^192\\.168\\..*")) ||
+                host.matches(Regex("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*"))
+            schemeOk && (localHost || privateIp)
+        } catch (_: Exception) {
+            false
+        }
     }
 
-    private fun updateModeButtons(phoneButton: Button, row: LinearLayout) {
-        val pcButton = row.getChildAt(1) as Button
-        phoneButton.background = rounded(if (!runOnPc) accent else panel2, 14)
-        phoneButton.setTextColor(if (!runOnPc) Color.WHITE else primaryText)
-        pcButton.background = rounded(if (runOnPc) accent else panel2, 14)
-        pcButton.setTextColor(if (runOnPc) Color.WHITE else primaryText)
-        modeLabel.text = if (runOnPc) "●  PC handoff" else "●  Phone active"
+    private fun updateModeButtons(phoneButton: Button, modeRow: LinearLayout) {
+        val phone = phoneButton
+        val pc = modeRow.getChildAt(1) as? Button ?: return
+        phone.background = rounded(if (!runOnPc) accent else panel2, 14)
+        pc.background = rounded(if (runOnPc) accent else panel2, 14)
+        phone.setTextColor(if (!runOnPc) Color.WHITE else primaryText)
+        pc.setTextColor(if (runOnPc) Color.WHITE else primaryText)
+        modeLabel.text = if (runOnPc) "●  PC selected" else "●  Phone active"
+        modeLabel.setTextColor(if (runOnPc) warning else success)
     }
 
     private fun card(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(16), dp(16), dp(16), dp(16))
         background = rounded(panel, 20)
-        elevation = dp(1).toFloat()
     }
 
-    private fun row(title: String, value: String, color: Int): View {
-        val r = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(9), 0, dp(2))
-        }
-        r.addView(label(title, 14f, muted), LinearLayout.LayoutParams(0, -2, 1f))
-        r.addView(label(value, 14f, color))
-        return r
-    }
-
-    private fun label(value: String, size: Float = 14f, color: Int = muted) = TextView(this).apply {
-        text = value
+    private fun label(textValue: String, size: Float, color: Int): TextView = TextView(this).apply {
+        text = textValue
         textSize = size
         setTextColor(color)
     }
 
-    private fun space(height: Int) = Space(this).apply {
+    private fun row(name: String, value: String, color: Int): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(10), 0, dp(2))
+        addView(label(name, 14f, muted), LinearLayout.LayoutParams(0, -2, 1f))
+        addView(label(value, 14f, color))
+    }
+
+    private fun space(height: Int): Space = Space(this).apply {
         layoutParams = LinearLayout.LayoutParams(1, dp(height))
     }
 
