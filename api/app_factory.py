@@ -63,6 +63,7 @@ def create_app(db_path=None, runner=None):
     from core.ecosystem_coordinator import EcosystemCoordinator
     from core.persistent_ecosystem import PersistentEcosystemRegistry
     from api.ecosystem_routes import register_ecosystem_routes
+    from api.ecosystem_pairing_routes import register_ecosystem_pairing_routes
     ecosystem = EcosystemCoordinator()
     ecosystem_registry = PersistentEcosystemRegistry(security.store)
     app.state.ecosystem = ecosystem
@@ -76,6 +77,7 @@ def create_app(db_path=None, runner=None):
                 online=device.online,
             )
     register_ecosystem_routes(app, ecosystem, security.api_auth, ecosystem_registry)
+    register_ecosystem_pairing_routes(app)
 
     register_realtime_routes(app, security, event_hub)
     from api.voice_routes import register_voice_routes
