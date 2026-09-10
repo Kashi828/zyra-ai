@@ -99,26 +99,36 @@ class PersistentDeviceStore:
             )
         return expires_at
 
-    def get_session_expires_at(self, session_id: str):
+    def get_session(self, session_id: str):
         with self._connect() as db:
             row = db.execute(
-                "SELECT expires_at FROM device_sessions WHERE session_id=?",
+                "SELECT session_id, device_id, expires_at, revoked, created_at "
+                "FROM device_sessions WHERE session_id=?",
                 (session_id,),
             ).fetchone()
         if not row:
+            return None
+        return {
+            "session_id": row[0],
+            "device_id": row[1],
+            "expires_at": int(row[2]),
+            "revoked": bool(row[3]),
+            "created_at": int(row[4]),
+        }
+
+    def get_session_expires_at(self, session_id: str):
+        session = self.get_session(session_id)
+        if not session:
             raise PermissionError("session not found")
-        return int(row[0])
+        return session["expires_at"]
 
     def list_sessions(self, device_id: str, include_inactive: bool = False):
-        query = (
-            "SELECT session_id, expires_at, revoked, created_at "
-            "FROM device_sessions WHERE device_id=? "
-        )
+        query = "SELECT session_id, expires_at, revoked, created_at FROM device_sessions WHERE device_id=?"
         params = [device_id]
         if not include_inactive:
-            query += "AND revoked=0 AND expires_at>? "
+            query += " AND revoked=0 AND expires_at>?"
             params.append(int(time.time()))
-        query += "ORDER BY created_at DESC"
+        query += " ORDER BY created_at DESC"
         with self._connect() as db:
             rows = db.execute(query, tuple(params)).fetchall()
         return tuple({
@@ -140,29 +150,19 @@ class PersistentDeviceStore:
 
     def revoke_session(self, session_id: str):
         with self._lock, self._connect() as db:
-            db.execute(
-                "UPDATE device_sessions SET revoked=1 WHERE session_id=?",
-                (session_id,),
-            )
+            db.execute("UPDATE device_sessions SET revoked=1 WHERE session_id=?", (session_id,))
 
     def revoke_device_sessions(self, device_id: str):
         with self._lock, self._connect() as db:
             db.execute(
-                "UPDATE device_sessions SET revoked=1 "
-                "WHERE device_id=? AND revoked=0",
+                "UPDATE device_sessions SET revoked=1 WHERE device_id=? AND revoked=0",
                 (device_id,),
             )
 
     def revoke_device(self, device_id: str):
         with self._lock, self._connect() as db:
-            db.execute(
-                "UPDATE trusted_devices SET revoked=1 WHERE device_id=?",
-                (device_id,),
-            )
-            db.execute(
-                "UPDATE device_sessions SET revoked=1 WHERE device_id=?",
-                (device_id,),
-            )
+            db.execute("UPDATE trusted_devices SET revoked=1 WHERE device_id=?", (device_id,))
+            db.execute("UPDATE device_sessions SET revoked=1 WHERE device_id=?", (device_id,))
 
     def issue_session_id(self):
         return "sess_" + secrets.token_urlsafe(18)
