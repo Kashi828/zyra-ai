@@ -16,10 +16,14 @@ import android.widget.ScrollView
 import android.widget.Space
 import android.widget.TextView
 import okhttp3.Call
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import org.json.JSONObject
 import java.io.IOException
+import java.net.URI
 import java.util.concurrent.TimeUnit
 
 class MainActivity : Activity() {
@@ -37,6 +41,7 @@ class MainActivity : Activity() {
         .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(4, TimeUnit.SECONDS)
         .build()
+    private val jsonType = "application/json; charset=utf-8".toMediaType()
 
     private lateinit var modeLabel: TextView
     private lateinit var pcState: TextView
@@ -122,7 +127,7 @@ class MainActivity : Activity() {
             background = rounded(accent, 14)
             setOnClickListener {
                 runOnPc = false
-                updateModeButtons(this, modeRow)
+                updateModeButtons(phoneButton, modeRow)
             }
         }
         val pcButton = Button(this).apply {
@@ -165,7 +170,7 @@ class MainActivity : Activity() {
         pcRow.addView(pcState)
         status.addView(pcRow)
         status.addView(row("Protection", "Active", success))
-        status.addView(row("Remote access", "Explicit connect only", warning))
+        status.addView(row("Remote access", "LAN / local only", warning))
         root.addView(status)
 
         root.addView(space(14))
@@ -220,25 +225,32 @@ class MainActivity : Activity() {
         }
         if (runOnPc) {
             val base = pcUrlInput.text.toString().trim().trimEnd('/')
-            if (base.isEmpty()) {
-                activityLog.text = "Connect your Windows PC first."
+            if (!isAllowedPcUrl(base)) {
+                activityLog.text = "Use a local/LAN Windows address (127.0.0.1, 10.x, 172.16–31.x, 192.168.x, or .local)."
                 return
             }
             activityLog.text = "Sending to trusted Windows agent…"
-            val request = Request.Builder().url("$base/health").get().build()
+            val body = JSONObject()
+                .put("goal", task)
+                .put("context", JSONObject().put("source", "android"))
+                .toString()
+                .toRequestBody(jsonType)
+            val request = Request.Builder().url("$base/v1/runtime/tasks").post(body).build()
             http.newCall(request).enqueue(object : okhttp3.Callback {
                 override fun onFailure(call: Call, e: IOException) {
                     runOnUiThread { activityLog.text = "Windows agent unavailable. Check the PC URL and network." }
                 }
                 override fun onResponse(call: Call, response: Response) {
                     response.use {
+                        val text = it.body?.string().orEmpty()
                         runOnUiThread {
                             if (it.isSuccessful) {
-                                activityLog.text = "Windows agent is reachable. Task is ready to hand off: $task"
+                                val taskId = try { JSONObject(text).optString("task_id", "queued") } catch (_: Exception) { "queued" }
+                                activityLog.text = "Task handed to Windows agent. ID: $taskId"
                                 pcState.text = "Connected"
                                 pcState.setTextColor(success)
                             } else {
-                                activityLog.text = "Windows agent returned HTTP ${it.code}."
+                                activityLog.text = "Windows agent rejected the task (HTTP ${it.code})."
                             }
                         }
                     }
@@ -261,14 +273,14 @@ class MainActivity : Activity() {
             lower == "what did i ask you to remember" -> {
                 activityLog.text = prefs.getString("last_note", "Nothing saved yet.") ?: "Nothing saved yet."
             }
-            else -> activityLog.text = "Phone agent received the task. Local execution is limited to safe device actions; connect the Windows agent for protected PC workflows."
+            else -> activityLog.text = "Phone agent received the task. Local execution is limited to safe device actions; use On PC for protected Windows workflows."
         }
     }
 
     private fun connectToPc() {
         val base = pcUrlInput.text.toString().trim().trimEnd('/')
-        if (base.isEmpty()) {
-            activityLog.text = "Enter the Windows agent address."
+        if (!isAllowedPcUrl(base)) {
+            activityLog.text = "Use a local/LAN Windows address (127.0.0.1, 10.x, 172.16–31.x, 192.168.x, or .local)."
             return
         }
         prefs.edit().putString("pc_url", base).apply()
@@ -291,7 +303,7 @@ class MainActivity : Activity() {
                             pcState.text = "Connected"
                             pcState.setTextColor(success)
                             modeLabel.text = "●  Ecosystem linked"
-                            activityLog.text = "Windows agent connected. Phone and PC can now share the ecosystem."
+                            activityLog.text = "Windows agent connected. Phone and PC share the ZYRA ecosystem."
                         } else {
                             pcState.text = "Error"
                             pcState.setTextColor(warning)
@@ -301,6 +313,20 @@ class MainActivity : Activity() {
                 }
             }
         })
+    }
+
+    private fun isAllowedPcUrl(value: String): Boolean {
+        return try {
+            val host = URI(value).host?.lowercase() ?: return false
+            host == "localhost" || host == "127.0.0.1" || host.endsWith(".local") ||
+                host.startsWith("10.") || host.startsWith("192.168.") ||
+                host.startsWith("172.16.") || host.startsWith("172.17.") || host.startsWith("172.18.") ||
+                host.startsWith("172.19.") || host.startsWith("172.20.") || host.startsWith("172.21.") ||
+                host.startsWith("172.22.") || host.startsWith("172.23.") || host.startsWith("172.24.") ||
+                host.startsWith("172.25.") || host.startsWith("172.26.") || host.startsWith("172.27.") ||
+                host.startsWith("172.28.") || host.startsWith("172.29.") || host.startsWith("172.30.") ||
+                host.startsWith("172.31.")
+        } catch (_: Exception) { false }
     }
 
     private fun updateModeButtons(phoneButton: Button, row: LinearLayout) {
