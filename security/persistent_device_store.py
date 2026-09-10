@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import secrets
 import sqlite3
 import threading
 import time
@@ -106,6 +107,44 @@ class PersistentDeviceStore:
                 (session_id, device_id, expires, now),
             )
         return expires
+
+    def rotate_session(self, session_id, ttl_seconds):
+        """Atomically replace a valid session with a fresh session identifier."""
+        if not session_id:
+            raise PermissionError("missing session")
+        ttl = int(ttl_seconds)
+        if ttl <= 0:
+            raise ValueError("session TTL must be positive")
+        now = int(time.time())
+        new_session_id = "sess_" + secrets.token_urlsafe(18)
+        with self._lock, self._connect() as db:
+            row = db.execute(
+                "SELECT device_id, expires_at, revoked FROM device_sessions WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+            if not row:
+                raise PermissionError("session is invalid or expired")
+            device_id, expires_at, revoked = row
+            if revoked or expires_at <= now:
+                raise PermissionError("session is invalid or expired")
+            device = db.execute(
+                "SELECT revoked FROM trusted_devices WHERE device_id=?",
+                (device_id,),
+            ).fetchone()
+            if not device or device[0]:
+                raise PermissionError("device is not trusted")
+            new_expires = now + ttl
+            db.execute(
+                "UPDATE device_sessions SET revoked=1 WHERE session_id=? AND revoked=0",
+                (session_id,),
+            )
+            db.execute(
+                "INSERT INTO device_sessions "
+                "(session_id, device_id, expires_at, revoked, created_at) "
+                "VALUES (?, ?, ?, 0, ?)",
+                (new_session_id, device_id, new_expires, now),
+            )
+        return new_session_id, device_id, new_expires
 
     def validate_session(self, session_id, device_id=None):
         now = int(time.time())
