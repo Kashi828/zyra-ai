@@ -14,9 +14,10 @@ from core.voice import VoiceGateway
 import os
 
 
-def create_app(db_path="data/zyra_security.sqlite3", runner=None):
+def create_app(db_path=None, runner=None):
     if FastAPI is None:
         raise RuntimeError("FastAPI is required to create the API application")
+    db_path = db_path or os.getenv("ZYRA_DB_PATH", "data/zyra_security.sqlite3")
     app = FastAPI(title="ZYRA AI")
     app.add_middleware(
         CORSMiddleware,
