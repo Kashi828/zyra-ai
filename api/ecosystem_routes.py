@@ -1,3 +1,6 @@
+from ipaddress import ip_address
+from urllib.parse import urlparse
+
 from fastapi import HTTPException
 
 
@@ -14,6 +17,24 @@ def _authorize(auth_guard, body):
     return device_id
 
 
+def _validate_endpoint(endpoint):
+    value = str(endpoint or "").strip()
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise HTTPException(status_code=400, detail="invalid endpoint")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise HTTPException(status_code=400, detail="endpoint must not contain credentials, query, or fragment")
+    host = parsed.hostname
+    try:
+        addr = ip_address(host)
+    except ValueError:
+        addr = None
+    if parsed.scheme == "http":
+        if addr is None or not (addr.is_private or addr.is_loopback or addr.is_link_local):
+            raise HTTPException(status_code=400, detail="HTTP endpoints must use private or local IP addresses")
+    return value.rstrip("/")
+
+
 def register_ecosystem_routes(app, coordinator, auth_guard, registry=None):
     @app.get("/v1/ecosystem/devices")
     def ecosystem_devices():
@@ -27,6 +48,7 @@ def register_ecosystem_routes(app, coordinator, auth_guard, registry=None):
                     "online": d.online,
                     "last_seen": d.last_seen,
                     "revoked": d.revoked,
+                    "endpoint_bound": bool(d.endpoint),
                 }
                 for d in registry.devices()
             ]}
@@ -38,6 +60,7 @@ def register_ecosystem_routes(app, coordinator, auth_guard, registry=None):
         target_device_id = str(body.get("target_device_id", ""))
         device_type = str(body.get("device_type", ""))
         display_name = str(body.get("display_name", ""))
+        endpoint = _validate_endpoint(body.get("endpoint")) if body.get("endpoint") else ""
         if not target_device_id or not device_type:
             raise HTTPException(status_code=400, detail="target_device_id and device_type are required")
         if registry is None:
@@ -45,13 +68,13 @@ def register_ecosystem_routes(app, coordinator, auth_guard, registry=None):
         trusted = registry.store.get_device(target_device_id)
         if not trusted or trusted["revoked"]:
             raise HTTPException(status_code=403, detail="target device is not trusted")
-        # Only an already-authenticated trusted device can add another already-trusted device.
-        registry.register(target_device_id, device_type, display_name, online=False)
+        registry.register(target_device_id, device_type, display_name, online=False, endpoint=endpoint)
         return {
             "ok": True,
             "authorized_by": source_device_id,
             "device_id": target_device_id,
             "device_type": device_type,
+            "endpoint_bound": bool(endpoint),
             "status": "enrolled",
         }
 
@@ -75,19 +98,15 @@ def register_ecosystem_routes(app, coordinator, auth_guard, registry=None):
         capability = str(body.get("capability", ""))
         if not target_device_id or not capability:
             raise HTTPException(status_code=400, detail="target_device_id and capability are required")
-
         decision = coordinator.route(source_device_id, target_device_id, capability)
         if not decision.allowed:
             status = 409 if "confirmation" in decision.reason else 403
-            raise HTTPException(
-                status_code=status,
-                detail={
-                    "reason": decision.reason,
-                    "source_device_id": source_device_id,
-                    "target_device_id": target_device_id,
-                    "capability": capability,
-                },
-            )
+            raise HTTPException(status_code=status, detail={
+                "reason": decision.reason,
+                "source_device_id": source_device_id,
+                "target_device_id": target_device_id,
+                "capability": capability,
+            })
         return {
             "ok": True,
             "source_device_id": source_device_id,
