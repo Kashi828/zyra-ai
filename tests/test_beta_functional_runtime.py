@@ -38,8 +38,11 @@ def test_beta_runtime_task_executes_allowlisted_action(tmp_path):
 
 def test_beta_routes_are_registered(tmp_path):
     app = create_app(db_path=str(tmp_path / "security.sqlite3"), runner=lambda *_: "ok")
-    paths = {route.path for route in app.routes}
+    paths = {getattr(route, "path", None) for route in app.routes}
     assert "/v1/local/bootstrap" in paths
     assert "/v1/runtime/tasks" in paths
     assert "/v1/agent/stop" in paths
-    assert "/v1/setup/startup" in paths
+    assert "/v1/setup/startup" in paths or any(
+        any(getattr(child, "path", None) == "/v1/setup/startup" for child in getattr(route, "routes", []))
+        for route in app.routes
+    )
