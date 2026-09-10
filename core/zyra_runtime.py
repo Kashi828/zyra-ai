@@ -3,13 +3,15 @@ from threading import RLock
 import uuid
 from core.realtime_events import RealtimeEvent
 
+
 @dataclass
 class RuntimeState:
     active_tasks: dict = field(default_factory=dict)
     connected_devices: set[str] = field(default_factory=set)
 
+
 class ZyraRuntime:
-    """Coordinates subsystems; security remains enforced by each boundary."""
+    """Coordinates safe task execution while keeping authorization at the command boundary."""
 
     def __init__(
         self,
@@ -28,36 +30,7 @@ class ZyraRuntime:
         self.state = RuntimeState()
         self._lock = RLock()
 
-    def submit_goal(self, goal: str, context: dict | None = None) -> str:
-        if not goal or not goal.strip():
-            raise ValueError("goal is required")
-        task_id = uuid.uuid4().hex
-        with self._lock:
-            self.state.active_tasks[task_id] = {
-                "goal": goal.strip(),
-                "status": "queued",
-                "context": context or {},
-            }
-        if self.event_stream:
-            self.event_stream.publish({"task_id": task_id, "event": "queued"})
-        hub = getattr(self, "realtime_hub", None)
-        if hub:
-            hub.publish(RealtimeEvent(
-                event_id=task_id,
-                event_type="task.queued",
-                device_id=None,
-                task_id=task_id,
-                status="queued",
-                payload={"goal": goal.strip()},
-            ))
-        return task_id
-
-    def update_task(self, task_id: str, status: str, detail: str = "") -> None:
-        with self._lock:
-            if task_id not in self.state.active_tasks:
-                raise KeyError(task_id)
-            self.state.active_tasks[task_id]["status"] = status
-            self.state.active_tasks[task_id]["detail"] = detail
+    def _publish(self, task_id: str, status: str, detail: str = "") -> None:
         if self.event_stream:
             self.event_stream.publish({
                 "task_id": task_id,
@@ -75,6 +48,59 @@ class ZyraRuntime:
                 status=status,
                 payload={"detail": detail},
             ))
+
+    def submit_goal(self, goal: str, context: dict | None = None) -> str:
+        if not goal or not goal.strip():
+            raise ValueError("goal is required")
+        context = dict(context or {})
+        task_id = uuid.uuid4().hex
+        with self._lock:
+            self.state.active_tasks[task_id] = {
+                "goal": goal.strip(),
+                "status": "queued",
+                "context": context,
+            }
+
+        hub = getattr(self, "realtime_hub", None)
+        if hub:
+            hub.publish(RealtimeEvent(
+                event_id=task_id,
+                event_type="task.queued",
+                device_id=context.get("device_id"),
+                task_id=task_id,
+                status="queued",
+                payload={"goal": goal.strip()},
+            ))
+
+        action = context.get("action")
+        if not action or self.command_bridge is None:
+            return task_id
+
+        self.update_task(task_id, "running", f"Executing {action}")
+        try:
+            from services.authenticated_command import CommandRequest
+            request = CommandRequest(
+                session_id=str(context.get("session_id", "")),
+                device_id=str(context.get("device_id", "")),
+                action=str(action),
+                payload=dict(context.get("payload") or {}),
+            )
+            result = self.command_bridge.execute(request, command_id=task_id)
+            if result.accepted:
+                self.complete_task(task_id, result.message)
+            else:
+                self.fail_task(task_id, result.message)
+        except Exception:
+            self.fail_task(task_id, "action execution failed")
+        return task_id
+
+    def update_task(self, task_id: str, status: str, detail: str = "") -> None:
+        with self._lock:
+            if task_id not in self.state.active_tasks:
+                raise KeyError(task_id)
+            self.state.active_tasks[task_id]["status"] = status
+            self.state.active_tasks[task_id]["detail"] = detail
+        self._publish(task_id, status, detail)
 
     def complete_task(self, task_id: str, result: str) -> None:
         self.update_task(task_id, "completed", result)
@@ -102,11 +128,6 @@ class ZyraRuntime:
         content_type: str = "audio/wav",
         context: dict | None = None,
     ):
-        """
-        Transcribe a locally captured audio buffer and submit it through the
-        existing voice gateway. Execution continues through normal task
-        authorization/workflow boundaries.
-        """
         transcript = voice_gateway.transcribe(audio, content_type=content_type)
         return voice_gateway.handle_transcript(
             session_id,
