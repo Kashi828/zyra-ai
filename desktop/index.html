@@ -145,6 +145,25 @@ html[data-zyra-startup="workspace"] #zyra-onboarding { display: none !important;
     </div>
   </section>
 </main>
+<script>
+// Electron loads this page with file://. Root-relative fetches would otherwise
+// resolve to the filesystem and fail before reaching the local ZYRA backend.
+// Keep the renderer sandboxed and route only API paths to the loopback service.
+(() => {
+  const nativeFetch = window.fetch.bind(window);
+  const API_ORIGIN = "http://127.0.0.1:8000";
+  window.zyraApiOrigin = API_ORIGIN;
+  window.fetch = (input, init) => {
+    if (typeof input === "string" && input.startsWith("/")) {
+      return nativeFetch(`${API_ORIGIN}${input}`, init);
+    }
+    if (input instanceof URL && input.pathname.startsWith("/")) {
+      return nativeFetch(`${API_ORIGIN}${input.pathname}${input.search}`, init);
+    }
+    return nativeFetch(input, init);
+  };
+})();
+</script>
 <script src="app.js"></script>
 <script src="startup_gate.js"></script>
 <script src="setup_wizard.js"></script>
