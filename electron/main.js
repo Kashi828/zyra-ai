@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, session } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const { spawn } = require("child_process");
 const http = require("http");
 
@@ -9,15 +10,11 @@ let backend = null;
 let backendRestarts = 0;
 const MAX_BACKEND_RESTARTS = 2;
 
-function packagedRuntimePath(name) {
-  const exe = process.platform === "win32" ? `${name}.exe` : name;
-  return path.join(process.resourcesPath, "runtime", name, exe);
-}
-
 function bundledExecutable(name) {
   if (!app.isPackaged) return null;
-  const candidate = packagedRuntimePath(name);
-  return require("fs").existsSync(candidate) ? candidate : null;
+  const exe = process.platform === "win32" ? `${name}.exe` : name;
+  const candidate = path.join(process.resourcesPath, "runtime", name, exe);
+  return fs.existsSync(candidate) ? candidate : null;
 }
 
 function pythonExecutable() {
@@ -56,25 +53,22 @@ function waitForBackend(attempts = 60, delayMs = 250) {
 
 function startBackend() {
   if (process.env.ZYRA_SKIP_BACKEND === "1") return;
-
   const bundled = bundledExecutable("zyra-backend");
   if (bundled) {
-    backend = spawn(bundled, ["--host", "127.0.0.1", "--port", "8000"], {
+    backend = spawn(bundled, [], {
       cwd: path.dirname(bundled),
       windowsHide: true,
       stdio: "ignore",
     });
   } else {
-    const python = pythonExecutable();
-    backend = spawn(python, ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"], {
+    backend = spawn(pythonExecutable(), ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"], {
       cwd: path.resolve(__dirname, ".."),
       windowsHide: true,
       stdio: "ignore",
     });
   }
-
   backend.on("error", () => { backend = null; });
-  backend.on("exit", (_code, _signal) => {
+  backend.on("exit", () => {
     backend = null;
     if (!mainWindow || backendRestarts >= MAX_BACKEND_RESTARTS) return;
     backendRestarts += 1;
@@ -84,7 +78,6 @@ function startBackend() {
 
 function startNativeBridge() {
   if (process.env.ZYRA_SKIP_NATIVE_BRIDGE === "1") return;
-
   const bundled = bundledExecutable("zyra-native-bridge");
   if (bundled) {
     bridge = spawn(bundled, [], {
@@ -93,14 +86,12 @@ function startNativeBridge() {
       stdio: ["pipe", "pipe", "ignore"],
     });
   } else {
-    const python = pythonExecutable();
-    bridge = spawn(python, ["-m", "desktop.native_bridge"], {
+    bridge = spawn(pythonExecutable(), ["-m", "desktop.native_bridge"], {
       cwd: path.resolve(__dirname, ".."),
       windowsHide: true,
       stdio: ["pipe", "pipe", "ignore"],
     });
   }
-
   bridge.on("error", () => { bridge = null; });
 }
 
@@ -122,14 +113,9 @@ function rpc(method, args = {}) {
         const result = JSON.parse(line);
         if (result.ok === false) reject(new Error(result.error || "native bridge error"));
         else resolve(result);
-      } catch (error) {
-        reject(error);
-      }
+      } catch (error) { reject(error); }
     };
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("native bridge timeout"));
-    }, 5000);
+    const timer = setTimeout(() => { cleanup(); reject(new Error("native bridge timeout")); }, 5000);
     const cleanup = () => {
       clearTimeout(timer);
       bridge?.stdout?.off("data", onData);
@@ -154,7 +140,6 @@ function createWindow() {
       sandbox: true,
     },
   });
-
   mainWindow.loadFile(path.join(__dirname, "..", "desktop", "index.html"));
   mainWindow.on("closed", () => { mainWindow = null; });
 }
@@ -173,13 +158,8 @@ app.whenReady().then(async () => {
   registerIpc();
   startBackend();
   startNativeBridge();
-  try {
-    await waitForBackend();
-  } catch (error) {
-    console.error(error.message);
-  }
+  try { await waitForBackend(); } catch (error) { console.error(error.message); }
   createWindow();
-
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
