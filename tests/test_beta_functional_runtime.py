@@ -42,7 +42,7 @@ def test_beta_routes_are_registered(tmp_path):
     assert "/v1/local/bootstrap" in paths
     assert "/v1/runtime/tasks" in paths
     assert "/v1/agent/stop" in paths
-    assert "/v1/setup/startup" in paths or any(
-        any(getattr(child, "path", None) == "/v1/setup/startup" for child in getattr(route, "routes", []))
+    assert any(
+        getattr(route, "routes", None) and any(getattr(child, "path", None) == "/v1/setup/startup" for child in route.routes)
         for route in app.routes
     )
