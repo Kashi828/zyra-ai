@@ -11,6 +11,7 @@ from api.session_routes import register_session_routes
 from api.realtime_routes import register_realtime_routes
 from api.runtime_routes import register_runtime_routes
 from api.setup_routes import build_setup_router
+from api.agent_routes import register_agent_routes
 from core.realtime_events import RealtimeEventHub
 from core.voice import VoiceGateway
 import os
@@ -69,8 +70,7 @@ def create_app(db_path=None, runner=None):
     from api.audit_routes import register_audit_routes
     register_audit_routes(app, security, audit_log)
     register_realtime_routes(app, security, event_hub)
-    register_setup = app.include_router
-    register_setup(build_setup_router())
+    app.include_router(build_setup_router())
 
     from api.voice_routes import register_voice_routes
     from core.zyra_runtime import ZyraRuntime
@@ -78,6 +78,7 @@ def create_app(db_path=None, runner=None):
     runtime = ZyraRuntime(command_bridge=bridge)
     runtime.realtime_hub = event_hub
     app.state.voice_runtime = runtime
+    register_agent_routes(app, security, runtime)
     voice_stt = None
     voice_tts = None
 
