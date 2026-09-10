@@ -13,14 +13,7 @@ class RuntimeState:
 class ZyraRuntime:
     """Coordinates safe task execution while keeping authorization at the command boundary."""
 
-    def __init__(
-        self,
-        orchestrator=None,
-        workflow_engine=None,
-        command_bridge=None,
-        transfer_worker=None,
-        event_stream=None,
-    ):
+    def __init__(self, orchestrator=None, workflow_engine=None, command_bridge=None, transfer_worker=None, event_stream=None):
         self.orchestrator = orchestrator
         self.workflow_engine = workflow_engine
         self.command_bridge = command_bridge
@@ -32,45 +25,24 @@ class ZyraRuntime:
 
     def _publish(self, task_id: str, status: str, detail: str = "") -> None:
         if self.event_stream:
-            self.event_stream.publish({
-                "task_id": task_id,
-                "event": "status",
-                "status": status,
-                "detail": detail,
-            })
+            self.event_stream.publish({"task_id": task_id, "event": "status", "status": status, "detail": detail})
         hub = getattr(self, "realtime_hub", None)
         if hub:
-            hub.publish(RealtimeEvent(
-                event_id=task_id,
-                event_type="task.updated",
-                device_id=None,
-                task_id=task_id,
-                status=status,
-                payload={"detail": detail},
-            ))
+            hub.publish(RealtimeEvent(event_id=task_id, event_type="task.updated", device_id=None, task_id=task_id, status=status, payload={"detail": detail}))
 
     def submit_goal(self, goal: str, context: dict | None = None) -> str:
         if not goal or not goal.strip():
             raise ValueError("goal is required")
         context = dict(context or {})
         task_id = uuid.uuid4().hex
+        clean_goal = goal.strip()
         with self._lock:
-            self.state.active_tasks[task_id] = {
-                "goal": goal.strip(),
-                "status": "queued",
-                "context": context,
-            }
-
+            self.state.active_tasks[task_id] = {"goal": clean_goal, "status": "queued", "context": context}
+        if self.event_stream:
+            self.event_stream.publish({"task_id": task_id, "event": "queued", "status": "queued", "detail": ""})
         hub = getattr(self, "realtime_hub", None)
         if hub:
-            hub.publish(RealtimeEvent(
-                event_id=task_id,
-                event_type="task.queued",
-                device_id=context.get("device_id"),
-                task_id=task_id,
-                status="queued",
-                payload={"goal": goal.strip()},
-            ))
+            hub.publish(RealtimeEvent(event_id=task_id, event_type="task.queued", device_id=context.get("device_id"), task_id=task_id, status="queued", payload={"goal": clean_goal}))
 
         action = context.get("action")
         if not action or self.command_bridge is None:
@@ -79,12 +51,7 @@ class ZyraRuntime:
         self.update_task(task_id, "running", f"Executing {action}")
         try:
             from services.authenticated_command import CommandRequest
-            request = CommandRequest(
-                session_id=str(context.get("session_id", "")),
-                device_id=str(context.get("device_id", "")),
-                action=str(action),
-                payload=dict(context.get("payload") or {}),
-            )
+            request = CommandRequest(session_id=str(context.get("session_id", "")), device_id=str(context.get("device_id", "")), action=str(action), payload=dict(context.get("payload") or {}))
             result = self.command_bridge.execute(request, command_id=task_id)
             if result.accepted:
                 self.complete_task(task_id, result.message)
@@ -118,27 +85,10 @@ class ZyraRuntime:
         with self._lock:
             self.state.connected_devices.discard(device_id)
 
-    def submit_voice_audio(
-        self,
-        voice_gateway,
-        session_id: str,
-        device_id: str,
-        audio: bytes,
-        *,
-        content_type: str = "audio/wav",
-        context: dict | None = None,
-    ):
+    def submit_voice_audio(self, voice_gateway, session_id: str, device_id: str, audio: bytes, *, content_type: str = "audio/wav", context: dict | None = None):
         transcript = voice_gateway.transcribe(audio, content_type=content_type)
-        return voice_gateway.handle_transcript(
-            session_id,
-            device_id,
-            transcript,
-            context=context,
-        )
+        return voice_gateway.handle_transcript(session_id, device_id, transcript, context=context)
 
     def snapshot(self) -> dict:
         with self._lock:
-            return {
-                "active_tasks": dict(self.state.active_tasks),
-                "connected_devices": sorted(self.state.connected_devices),
-            }
+            return {"active_tasks": dict(self.state.active_tasks), "connected_devices": sorted(self.state.connected_devices)}
