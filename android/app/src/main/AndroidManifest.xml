@@ -2,6 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:label="ZYRA AI"
         android:supportsRtl="true">
         <activity
