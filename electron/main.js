@@ -51,20 +51,33 @@ function waitForBackend(attempts = 60, delayMs = 250) {
   });
 }
 
+function runtimeEnvironment() {
+  const userData = app.getPath("userData");
+  const dataDir = path.join(userData, "data");
+  fs.mkdirSync(dataDir, {recursive: true});
+  return {
+    ...process.env,
+    ZYRA_DB_PATH: path.join(dataDir, "zyra_security.sqlite3"),
+  };
+}
+
 function startBackend() {
   if (process.env.ZYRA_SKIP_BACKEND === "1") return;
   const bundled = bundledExecutable("zyra-backend");
+  const env = runtimeEnvironment();
   if (bundled) {
     backend = spawn(bundled, [], {
-      cwd: path.dirname(bundled),
+      cwd: app.getPath("userData"),
       windowsHide: true,
       stdio: "ignore",
+      env,
     });
   } else {
     backend = spawn(pythonExecutable(), ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"], {
       cwd: path.resolve(__dirname, ".."),
       windowsHide: true,
       stdio: "ignore",
+      env,
     });
   }
   backend.on("error", () => { backend = null; });
@@ -81,15 +94,17 @@ function startNativeBridge() {
   const bundled = bundledExecutable("zyra-native-bridge");
   if (bundled) {
     bridge = spawn(bundled, [], {
-      cwd: path.dirname(bundled),
+      cwd: app.getPath("userData"),
       windowsHide: true,
       stdio: ["pipe", "pipe", "ignore"],
+      env: runtimeEnvironment(),
     });
   } else {
     bridge = spawn(pythonExecutable(), ["-m", "desktop.native_bridge"], {
       cwd: path.resolve(__dirname, ".."),
       windowsHide: true,
       stdio: ["pipe", "pipe", "ignore"],
+      env: runtimeEnvironment(),
     });
   }
   bridge.on("error", () => { bridge = null; });
