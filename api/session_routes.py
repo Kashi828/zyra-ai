@@ -1,3 +1,5 @@
+import time
+
 from fastapi import HTTPException
 
 
@@ -81,7 +83,7 @@ def register_session_routes(app, session_service):
         target = session_service.store.get_session(target_session_id)
         if not target or target["device_id"] != device_id:
             raise HTTPException(status_code=404, detail="session not found")
-        if target["revoked"] or target["expires_at"] <= __import__("time").time():
+        if target["revoked"] or target["expires_at"] <= int(time.time()):
             raise HTTPException(status_code=409, detail="session is already inactive")
 
         session_service.store.revoke_session(target_session_id)
