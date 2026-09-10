@@ -272,6 +272,7 @@ class MainActivity : Activity() {
                 .put("goal", task)
                 .put("device_id", deviceId)
                 .put("session_id", sessionId)
+                .put("confirmed", true)
                 .put("context", JSONObject().put("source", "android"))
                 .toString().toRequestBody(jsonType)
             val request = Request.Builder().url("$base/v1/runtime/tasks").post(body).build()
@@ -287,8 +288,7 @@ class MainActivity : Activity() {
                                 pcState.text = "Connected"
                                 pcState.setTextColor(success)
                                 val json = try { JSONObject(text) } catch (_: Exception) { JSONObject() }
-                                val status = json.optString("status", "completed")
-                                activityLog.text = "Windows task ${status}: ${json.optString("detail", "done")}"
+                                activityLog.text = "Windows task ${json.optString("status", "done")}: ${json.optString("detail", "done")}"
                             } else {
                                 activityLog.text = "Windows agent rejected the task (${response.code})."
                             }
@@ -307,24 +307,24 @@ class MainActivity : Activity() {
             onError("Pair this phone with Windows first.")
             return
         }
-
         if (!refresh.isNullOrBlank()) {
-            postJson("/v1/session/refresh", JSONObject().put("device_id", device).put("refresh_token", refresh)) { ok, text ->
+            postJson("http://$${pcUrlInput.text.toString().trim().trimEnd('/')}/v1/session/refresh", JSONObject().put("device_id", device).put("refresh_token", refresh)) { ok, text ->
                 if (ok) {
-                    val json = JSONObject(text)
-                    saveSession(device, secret, json)
-                    onReady(device, json.getString("session_id"))
-                } else {
-                    createSession(device, secret, onReady, onError)
-                }
+                    try {
+                        val json = JSONObject(text)
+                        saveSession(device, secret, json)
+                        onReady(device, json.getString("session_id"))
+                    } catch (_: Exception) {
+                        createSession(device, secret, onReady, onError)
+                    }
+                } else createSession(device, secret, onReady, onError)
             }
-        } else {
-            createSession(device, secret, onReady, onError)
-        }
+        } else createSession(device, secret, onReady, onError)
     }
 
     private fun createSession(device: String, secret: String, onReady: (String, String) -> Unit, onError: (String) -> Unit) {
-        postJson("/v1/session/create", JSONObject().put("device_id", device).put("device_secret", secret)) { ok, text ->
+        val base = pcUrlInput.text.toString().trim().trimEnd('/')
+        postJson("$base/v1/session/create", JSONObject().put("device_id", device).put("device_secret", secret), absolute = true) { ok, text ->
             if (!ok) { onError("Windows session creation failed."); return@postJson }
             try {
                 val json = JSONObject(text)
@@ -335,13 +335,10 @@ class MainActivity : Activity() {
     }
 
     private fun saveSession(device: String, secret: String, json: JSONObject) {
-        prefs.edit()
-            .putString("device_id", device)
-            .putString("device_secret", secret)
+        prefs.edit().putString("device_id", device).putString("device_secret", secret)
             .putString("session_id", json.optString("session_id"))
             .putString("refresh_token", json.optString("refresh_token"))
-            .putLong("expires_at", json.optLong("expires_at", 0L))
-            .apply()
+            .putLong("expires_at", json.optLong("expires_at", 0L)).apply()
     }
 
     private fun pairWithWindows() {
@@ -351,10 +348,10 @@ class MainActivity : Activity() {
         if (!isAllowedPcUrl(base)) { activityLog.text = "Enter the Windows LAN address first."; return }
         if (offer.isBlank() || code.isBlank()) { activityLog.text = "Enter the Windows pairing offer ID and code."; return }
         activityLog.text = "Enrolling this phone…"
-        val body = JSONObject()
-            .put("offer_id", offer)
-            .put("pairing_code", code)
-            .put("capabilities", org.json.JSONArray().apply { put("android.ui"); put("android.accessibility") })
+        val body = JSONObject().put("offer_id", offer).put("pairing_code", code)
+            .put("capabilities", org.json.JSONArray().apply {
+                put("windows.apps"); put("windows.files.read"); put("windows.browser")
+            })
         postJson("$base/v1/devices/pairing/enroll", body, absolute = true) { ok, text ->
             if (!ok) { runOnUiThread { activityLog.text = "Pairing rejected." }; return@postJson }
             try {
@@ -363,59 +360,29 @@ class MainActivity : Activity() {
                 val secret = json.getString("device_secret")
                 prefs.edit().putString("pc_url", base).putString("device_id", device).putString("device_secret", secret).apply()
                 createSession(device, secret, { _, _ ->
-                    runOnUiThread {
-                        pcState.text = "Paired"
-                        pcState.setTextColor(success)
-                        activityLog.text = "Phone paired securely with Windows."
-                    }
+                    runOnUiThread { pcState.text = "Paired"; pcState.setTextColor(success); activityLog.text = "Phone paired securely with Windows." }
                 }, { message -> runOnUiThread { activityLog.text = message } })
             } catch (_: Exception) { runOnUiThread { activityLog.text = "Pairing response was invalid." } }
         }
     }
 
     private fun postJson(path: String, body: JSONObject, absolute: Boolean = false, callback: (Boolean, String) -> Unit) {
-        val url = if (absolute) path else "http://127.0.0.1:8000$path"
-        val request = Request.Builder().url(url).post(body.toString().toRequestBody(jsonType)).build()
+        val request = Request.Builder().url(if (absolute) path else "http://127.0.0.1:8000$path")
+            .post(body.toString().toRequestBody(jsonType)).build()
         http.newCall(request).enqueue(object : okhttp3.Callback {
             override fun onFailure(call: Call, e: IOException) = callback(false, e.message ?: "connection failed")
-            override fun onResponse(call: Call, response: Response) {
-                response.use { callback(response.isSuccessful, response.body?.string().orEmpty()) }
-            }
+            override fun onResponse(call: Call, response: Response) { response.use { callback(response.isSuccessful, response.body?.string().orEmpty()) } }
         })
     }
 
     private fun connectToPc() {
         val base = pcUrlInput.text.toString().trim().trimEnd('/')
-        if (!isAllowedPcUrl(base)) {
-            activityLog.text = "Enter a local/LAN Windows address first."
-            return
-        }
+        if (!isAllowedPcUrl(base)) { activityLog.text = "Enter a local/LAN Windows address first."; return }
         activityLog.text = "Checking Windows agent…"
         val request = Request.Builder().url("$base/health").get().build()
         http.newCall(request).enqueue(object : okhttp3.Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread {
-                    pcState.text = "Offline"
-                    pcState.setTextColor(warning)
-                    activityLog.text = "Windows agent unavailable: ${e.message ?: "connection failed"}"
-                }
-            }
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    runOnUiThread {
-                        if (response.isSuccessful) {
-                            prefs.edit().putString("pc_url", base).apply()
-                            pcState.text = if (prefs.getString("device_id", null) != null) "Paired" else "Reachable"
-                            pcState.setTextColor(success)
-                            activityLog.text = "Windows agent is reachable."
-                        } else {
-                            pcState.text = "Error"
-                            pcState.setTextColor(warning)
-                            activityLog.text = "Windows agent returned HTTP ${response.code}."
-                        }
-                    }
-                }
-            }
+            override fun onFailure(call: Call, e: IOException) { runOnUiThread { pcState.text = "Offline"; pcState.setTextColor(warning); activityLog.text = "Windows agent unavailable: ${e.message ?: "connection failed"}" } }
+            override fun onResponse(call: Call, response: Response) { response.use { runOnUiThread { if (response.isSuccessful) { prefs.edit().putString("pc_url", base).apply(); pcState.text = if (prefs.getString("device_id", null) != null) "Paired" else "Reachable"; pcState.setTextColor(success); activityLog.text = "Windows agent is reachable." } else { pcState.text = "Error"; pcState.setTextColor(warning); activityLog.text = "Windows agent returned HTTP ${response.code}." } } } }
         })
     }
 
@@ -424,8 +391,7 @@ class MainActivity : Activity() {
         val host = uri.host ?: return false
         val schemeOk = uri.scheme == "http" || uri.scheme == "https"
         val localHost = host == "localhost" || host == "127.0.0.1" || host.endsWith(".local")
-        val privateIp = host.matches(Regex("^10\\..*")) || host.matches(Regex("^192\\.168\\..*")) ||
-            host.matches(Regex("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*"))
+        val privateIp = host.matches(Regex("^10\\..*")) || host.matches(Regex("^192\\.168\\..*")) || host.matches(Regex("^172\\.(1[6-9]|2[0-9]|3[0-1])\\..*"))
         schemeOk && (localHost || privateIp)
     } catch (_: Exception) { false }
 
@@ -439,70 +405,14 @@ class MainActivity : Activity() {
         modeLabel.setTextColor(if (runOnPc) warning else success)
     }
 
-    private fun card() = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(16), dp(16), dp(16))
-        background = rounded(panel, 20)
-    }
-
-    private fun actionButton(textValue: String, selected: Boolean) = Button(this).apply {
-        text = textValue
-        textSize = 13f
-        setTextColor(if (selected) Color.WHITE else primaryText)
-        isAllCaps = false
-        minHeight = 0
-        stateListAnimator = null
-        background = rounded(if (selected) accent else panel2, 14)
-    }
-
-    private fun primaryButton(textValue: String) = Button(this).apply {
-        text = textValue
-        textSize = 14f
-        setTextColor(Color.WHITE)
-        isAllCaps = false
-        minHeight = 0
-        stateListAnimator = null
-        background = rounded(accent, 16)
-    }
-
-    private fun secondaryButton(textValue: String) = Button(this).apply {
-        text = textValue
-        textSize = 13f
-        setTextColor(primaryText)
-        isAllCaps = false
-        minHeight = 0
-        stateListAnimator = null
-        background = rounded(panel2, 14)
-    }
-
-    private fun pill(textValue: String, color: Int) = TextView(this).apply {
-        text = textValue
-        textSize = 12f
-        setTextColor(color)
-        setPadding(dp(11), dp(7), dp(11), dp(7))
-        background = rounded(accentSoft, 30)
-    }
-
-    private fun label(textValue: String, size: Float, color: Int) = TextView(this).apply {
-        text = textValue
-        textSize = size
-        setTextColor(color)
-    }
-
-    private fun row(name: String, value: String, color: Int) = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(0, dp(10), 0, dp(2))
-        addView(label(name, 14f, muted), LinearLayout.LayoutParams(0, -2, 1f))
-        addView(label(value, 14f, color))
-    }
-
+    private fun card() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), dp(16)); background = rounded(panel, 20) }
+    private fun actionButton(textValue: String, selected: Boolean) = Button(this).apply { text = textValue; textSize = 13f; setTextColor(if (selected) Color.WHITE else primaryText); isAllCaps = false; minHeight = 0; stateListAnimator = null; background = rounded(if (selected) accent else panel2, 14) }
+    private fun primaryButton(textValue: String) = Button(this).apply { text = textValue; textSize = 14f; setTextColor(Color.WHITE); isAllCaps = false; minHeight = 0; stateListAnimator = null; background = rounded(accent, 16) }
+    private fun secondaryButton(textValue: String) = Button(this).apply { text = textValue; textSize = 13f; setTextColor(primaryText); isAllCaps = false; minHeight = 0; stateListAnimator = null; background = rounded(panel2, 14) }
+    private fun pill(textValue: String, color: Int) = TextView(this).apply { text = textValue; textSize = 12f; setTextColor(color); setPadding(dp(11), dp(7), dp(11), dp(7)); background = rounded(accentSoft, 30) }
+    private fun label(textValue: String, size: Float, color: Int) = TextView(this).apply { text = textValue; textSize = size; setTextColor(color) }
+    private fun row(name: String, value: String, color: Int) = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(10), 0, dp(2)); addView(label(name, 14f, muted), LinearLayout.LayoutParams(0, -2, 1f)); addView(label(value, 14f, color)) }
     private fun space(height: Int) = Space(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(height)) }
-
-    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
-        setColor(color)
-        cornerRadius = dp(radius).toFloat()
-    }
-
+    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(radius).toFloat() }
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
