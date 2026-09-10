@@ -7,11 +7,11 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
-    "build": "electron-builder --win nsis --x64",
+    "build": "electron-builder --win nsis --x64 --publish never",
     "diagnostics": "python scripts/bootstrap_windows.py --json",
     "prepare:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare_windows.ps1",
     "bundle:win-runtime": "python scripts/bundle_windows_runtime.py",
-    "build:win": "npm run bundle:win-runtime && electron-builder --win nsis --x64",
+    "build:win": "electron-builder --win nsis --x64 --publish never",
     "beta:win": "powershell -ExecutionPolicy Bypass -File scripts/build_windows_beta.ps1"
   },
   "devDependencies": {
