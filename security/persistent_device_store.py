@@ -121,7 +121,8 @@ class PersistentDeviceStore:
             return False
         if row[3] or row[2] <= now:
             return False
-        if not self.get_device(row[1]) or self.get_device(row[1])["revoked"]:
+        device = self.get_device(row[1])
+        if not device or device["revoked"]:
             return False
         return True
 
@@ -130,6 +131,14 @@ class PersistentDeviceStore:
             db.execute(
                 "UPDATE device_sessions SET revoked=1 WHERE session_id=?",
                 (session_id,),
+            )
+
+    def revoke_device_sessions(self, device_id):
+        """Revoke every active session for a device without changing trust state."""
+        with self._lock, self._connect() as db:
+            db.execute(
+                "UPDATE device_sessions SET revoked=1 WHERE device_id=? AND revoked=0",
+                (device_id,),
             )
 
     def purge_expired_sessions(self):
