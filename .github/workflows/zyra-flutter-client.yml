@@ -21,6 +21,9 @@ jobs:
       - name: Generate platform scaffolding
         working-directory: clients/zyra_flutter
         run: flutter create --platforms=android,windows .
+      - name: Restore analysis dependencies
+        working-directory: clients/zyra_flutter
+        run: flutter pub add --dev flutter_lints
       - name: Resolve packages
         working-directory: clients/zyra_flutter
         run: flutter pub get
@@ -49,6 +52,9 @@ jobs:
       - name: Generate platform scaffolding
         working-directory: clients/zyra_flutter
         run: flutter create --platforms=android,windows .
+      - name: Restore analysis dependencies
+        working-directory: clients/zyra_flutter
+        run: flutter pub add --dev flutter_lints
       - name: Resolve packages
         working-directory: clients/zyra_flutter
         run: flutter pub get
