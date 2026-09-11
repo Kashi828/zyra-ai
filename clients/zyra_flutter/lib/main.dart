@@ -95,7 +95,6 @@ class _Home extends StatelessWidget {
     const SizedBox(height: 28), _Composer(controller: command, listening: listening, onListen: onListen, onRun: onRun), const SizedBox(height: 26), const _Title('Quick actions'), const SizedBox(height: 12), _Actions(wide: wide), const SizedBox(height: 26), const _Title('Your ecosystem'), const SizedBox(height: 12), const _Ecosystem(), const SizedBox(height: 26), const _Title('Recent'), const SizedBox(height: 12), const _Recent(),
   ]))) ]);
 }
-}
 
 class _Composer extends StatelessWidget {
   const _Composer({required this.controller, required this.listening, required this.onListen, required this.onRun});
