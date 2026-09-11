@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'devices_page.dart';
+
 void main() => runApp(const ZyraApp());
 
 class ZyraApp extends StatelessWidget {
@@ -54,7 +56,7 @@ class _ZyraHomeState extends State<ZyraHome> {
         child: switch (tab) {
           ZyraTab.home => _Home(command: command, listening: listening, wide: wide, onListen: () => setState(() => listening = !listening), onRun: _run),
           ZyraTab.activity => const _InfoPage(key: ValueKey('activity'), title: 'Activity', icon: Icons.bolt_outlined, body: 'Your ZYRA task timeline, progress, and protected actions.'),
-          ZyraTab.devices => const _InfoPage(key: ValueKey('devices'), title: 'Devices', icon: Icons.devices_outlined, body: 'Trusted devices, sessions, pairing, and permissions.'),
+          ZyraTab.devices => const ZyraDevicesPage(key: ValueKey('devices')),
           ZyraTab.settings => const _InfoPage(key: ValueKey('settings'), title: 'Settings', icon: Icons.tune_outlined, body: 'Appearance, privacy, notifications, and advanced controls.'),
         },
       );
