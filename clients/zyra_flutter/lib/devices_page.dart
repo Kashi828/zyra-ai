@@ -3,15 +3,17 @@ import 'package:flutter/material.dart';
 import 'zyra_service.dart';
 
 class ZyraDevicesPage extends StatefulWidget {
-  ZyraDevicesPage({super.key, ZyraService? service}) : service = service ?? ZyraService();
+  const ZyraDevicesPage({super.key, this.service});
 
-  final ZyraService service;
+  final ZyraService? service;
 
   @override
   State<ZyraDevicesPage> createState() => _ZyraDevicesPageState();
 }
 
 class _ZyraDevicesPageState extends State<ZyraDevicesPage> {
+  ZyraService get _service => widget.service ?? ZyraService();
+
   final deviceId = TextEditingController();
   final sessionId = TextEditingController();
   ZyraSessionInventory? inventory;
@@ -38,7 +40,7 @@ class _ZyraDevicesPageState extends State<ZyraDevicesPage> {
       error = null;
     });
     try {
-      final result = await widget.service.listSessions(
+      final result = await _service.listSessions(
         ZyraSessionCredentials(deviceId: device, sessionId: session),
         includeInactive: includeInactive,
       );
@@ -70,7 +72,7 @@ class _ZyraDevicesPageState extends State<ZyraDevicesPage> {
     );
     if (confirmed != true) return;
     try {
-      await widget.service.revokeSession(
+      await _service.revokeSession(
         ZyraSessionCredentials(deviceId: deviceId.text.trim(), sessionId: sessionId.text.trim()),
         target.sessionId,
       );
