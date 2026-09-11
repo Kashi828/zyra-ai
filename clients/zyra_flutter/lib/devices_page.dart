@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'zyra_service.dart';
 
 class ZyraDevicesPage extends StatefulWidget {
-  const ZyraDevicesPage({super.key, this.service = const ZyraService()});
+  ZyraDevicesPage({super.key, ZyraService? service}) : service = service ?? ZyraService();
 
   final ZyraService service;
 
