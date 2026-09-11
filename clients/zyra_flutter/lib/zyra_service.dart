@@ -26,6 +26,22 @@ class ZyraService {
     return items.whereType<Map>().map((item) => ZyraDevice.fromJson(Map<String, dynamic>.from(item))).toList();
   }
 
+  Future<ZyraSessionInventory> listSessions(ZyraSessionCredentials credentials, {bool includeInactive = false}) async {
+    final data = await _postJson('/v1/session/list', {
+      ...credentials.toJson(),
+      'include_inactive': includeInactive,
+    });
+    return ZyraSessionInventory.fromJson(data);
+  }
+
+  Future<ZyraSessionRevokeResult> revokeSession(ZyraSessionCredentials credentials, String targetSessionId) async {
+    final data = await _postJson('/v1/session/revoke', {
+      ...credentials.toJson(),
+      'target_session_id': targetSessionId,
+    });
+    return ZyraSessionRevokeResult.fromJson(data);
+  }
+
   Future<ZyraCommandResult> execute(String command, {String? deviceId}) async {
     final body = <String, dynamic>{'command': command};
     if (deviceId != null && deviceId.isNotEmpty) body['device_id'] = deviceId;
@@ -68,6 +84,104 @@ class ZyraService {
     }
   }
 }
+
+class ZyraSessionCredentials {
+  const ZyraSessionCredentials({required this.deviceId, required this.sessionId});
+
+  final String deviceId;
+  final String sessionId;
+
+  Map<String, dynamic> toJson() => {
+        'device_id': deviceId,
+        'session_id': sessionId,
+      };
+}
+
+class ZyraSessionInventory {
+  const ZyraSessionInventory({required this.device, required this.summary, required this.sessions});
+
+  final ZyraSessionDevice device;
+  final ZyraSessionSummary summary;
+  final List<ZyraSession> sessions;
+
+  factory ZyraSessionInventory.fromJson(Map<String, dynamic> json) {
+    final rawSessions = json['sessions'];
+    return ZyraSessionInventory(
+      device: ZyraSessionDevice.fromJson(_map(json['device'])),
+      summary: ZyraSessionSummary.fromJson(_map(json['summary'])),
+      sessions: rawSessions is List
+          ? rawSessions.whereType<Map>().map((item) => ZyraSession.fromJson(Map<String, dynamic>.from(item))).toList()
+          : const [],
+    );
+  }
+}
+
+class ZyraSessionDevice {
+  const ZyraSessionDevice({required this.deviceId, required this.capabilities, required this.revoked, this.createdAt});
+
+  final String deviceId;
+  final List<String> capabilities;
+  final bool revoked;
+  final int? createdAt;
+
+  factory ZyraSessionDevice.fromJson(Map<String, dynamic> json) => ZyraSessionDevice(
+        deviceId: '${json['device_id'] ?? ''}',
+        capabilities: (json['capabilities'] is List) ? (json['capabilities'] as List).map((v) => '$v').toList() : const [],
+        revoked: json['revoked'] == true,
+        createdAt: json['created_at'] is num ? (json['created_at'] as num).toInt() : null,
+      );
+}
+
+class ZyraSessionSummary {
+  const ZyraSessionSummary({required this.total, required this.active, required this.inactive});
+
+  final int total;
+  final int active;
+  final int inactive;
+
+  factory ZyraSessionSummary.fromJson(Map<String, dynamic> json) => ZyraSessionSummary(
+        total: _int(json['total']),
+        active: _int(json['active']),
+        inactive: _int(json['inactive']),
+      );
+}
+
+class ZyraSession {
+  const ZyraSession({required this.sessionId, required this.deviceId, required this.active, required this.revoked, required this.current, required this.expiresAt});
+
+  final String sessionId;
+  final String deviceId;
+  final bool active;
+  final bool revoked;
+  final bool current;
+  final int expiresAt;
+
+  factory ZyraSession.fromJson(Map<String, dynamic> json) => ZyraSession(
+        sessionId: '${json['session_id'] ?? ''}',
+        deviceId: '${json['device_id'] ?? ''}',
+        active: json['active'] == true,
+        revoked: json['revoked'] == true,
+        current: json['current'] == true,
+        expiresAt: _int(json['expires_at']),
+      );
+}
+
+class ZyraSessionRevokeResult {
+  const ZyraSessionRevokeResult({required this.revoked, required this.sessionId, required this.currentSession});
+
+  final bool revoked;
+  final String sessionId;
+  final bool currentSession;
+
+  factory ZyraSessionRevokeResult.fromJson(Map<String, dynamic> json) => ZyraSessionRevokeResult(
+        revoked: json['revoked'] == true,
+        sessionId: '${json['session_id'] ?? ''}',
+        currentSession: json['current_session'] == true,
+      );
+}
+
+int _int(dynamic value) => value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+Map<String, dynamic> _map(dynamic value) => value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
 
 class ZyraDevice {
   const ZyraDevice({required this.id, required this.name, required this.online, this.platform});
