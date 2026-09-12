@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'session_context.dart';
 import 'zyra_service.dart';
 
 class ZyraDevicesPage extends StatefulWidget {
@@ -22,10 +23,21 @@ class _ZyraDevicesPageState extends State<ZyraDevicesPage> {
   String? error;
 
   @override
+  void initState() {
+    super.initState();
+    deviceId.text = zyraSessionContext.deviceId;
+    sessionId.text = zyraSessionContext.sessionId;
+  }
+
+  @override
   void dispose() {
     deviceId.dispose();
     sessionId.dispose();
     super.dispose();
+  }
+
+  void _syncContext() {
+    zyraSessionContext.setCredentials(deviceId: deviceId.text, sessionId: sessionId.text);
   }
 
   Future<void> _load() async {
@@ -35,6 +47,7 @@ class _ZyraDevicesPageState extends State<ZyraDevicesPage> {
       setState(() => error = 'Enter your device ID and current session ID.');
       return;
     }
+    _syncContext();
     setState(() {
       loading = true;
       error = null;
@@ -73,7 +86,7 @@ class _ZyraDevicesPageState extends State<ZyraDevicesPage> {
     if (confirmed != true) return;
     try {
       await _service.revokeSession(
-        ZyraSessionCredentials(deviceId: deviceId.text.trim(), sessionId: sessionId.text.trim()),
+        zyraSessionContext.credentials ?? ZyraSessionCredentials(deviceId: deviceId.text.trim(), sessionId: sessionId.text.trim()),
         target.sessionId,
       );
       _show('Session revoked.');
