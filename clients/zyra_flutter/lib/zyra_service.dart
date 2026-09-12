@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -15,8 +16,14 @@ class ZyraService {
 
   Future<bool> health() async {
     try {
-      final response = await _request((client) => client.getUrl(Uri.parse('$baseUrl/health')));
-      return response.statusCode >= 200 && response.statusCode < 300;
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+      try {
+        final request = await client.getUrl(Uri.parse('$baseUrl/health')).timeout(const Duration(seconds: 6));
+        final response = await request.close().timeout(const Duration(seconds: 10));
+        return response.statusCode >= 200 && response.statusCode < 300;
+      } finally {
+        client.close(force: true);
+      }
     } catch (_) {
       return false;
     }
@@ -68,17 +75,6 @@ class ZyraService {
     return ZyraCommandResult.fromJson(data);
   }
 
-  Future<HttpClientResponse> _request(Future<HttpClientRequest> Function(HttpClient) start) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
-    try {
-      final request = await start(client).timeout(const Duration(seconds: 6));
-      return await request.close().timeout(const Duration(seconds: 10));
-    } finally {
-      // The response is fully consumed by callers before this client is needed again.
-      // Closing here would invalidate a response stream, so callers own consumption.
-    }
-  }
-
   Future<dynamic> _getJson(String path) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
     try {
@@ -125,9 +121,7 @@ class ZyraService {
       final decoded = jsonDecode(text);
       if (decoded is Map && decoded['detail'] != null) detail = '${decoded['detail']}';
       if (decoded is Map && decoded['message'] != null) detail = '${decoded['message']}';
-    } catch (_) {
-      // Keep the stable status-based message for non-JSON errors.
-    }
+    } catch (_) {}
     throw ZyraApiException(detail, statusCode: statusCode);
   }
 }
