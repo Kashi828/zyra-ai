@@ -32,3 +32,7 @@ class ZyraSessionContext extends ChangeNotifier {
     notifyListeners();
   }
 }
+
+/// App-process session context shared by Home and Devices.
+/// It is memory-only and is never written to disk.
+final zyraSessionContext = ZyraSessionContext();
