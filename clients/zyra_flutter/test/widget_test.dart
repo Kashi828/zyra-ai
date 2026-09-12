@@ -21,4 +21,16 @@ void main() {
     }
     expect(calculator, findsOneWidget);
   });
+
+  testWidgets('ZYRA activity page shows empty state before actions', (tester) async {
+    await tester.pumpWidget(const ZyraApp());
+
+    final activityIcon = find.byIcon(Icons.bolt_outlined);
+    expect(activityIcon, findsWidgets);
+    await tester.tap(activityIcon.first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Protected activity'), findsOneWidget);
+    expect(find.text('No activity yet'), findsOneWidget);
+  });
 }
