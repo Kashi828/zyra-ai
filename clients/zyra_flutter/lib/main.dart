@@ -40,6 +40,7 @@ class _ZyraHomeState extends State<ZyraHome> {
   final command = TextEditingController();
   final deviceId = TextEditingController();
   final sessionId = TextEditingController();
+  final List<_ActivityEntry> activity = <_ActivityEntry>[];
   ZyraTab tab = ZyraTab.home;
   bool connected = false;
   bool listening = false;
@@ -100,10 +101,24 @@ class _ZyraHomeState extends State<ZyraHome> {
     _show('Free-form execution is disabled. Use an allowlisted Quick action.');
   }
 
+  void _recordActivity(String title, String detail, {bool success = true}) {
+    activity.insert(
+      0,
+      _ActivityEntry(
+        title: title,
+        detail: detail,
+        success: success,
+        time: DateTime.now(),
+      ),
+    );
+    if (activity.length > 25) activity.removeLast();
+  }
+
   Future<void> _remote(String action, Map<String, dynamic> payload) async {
     _syncContext();
     final credentials = zyraSessionContext.credentials;
     if (credentials == null) {
+      _recordActivity(action, 'Blocked: device/session credentials are missing.', success: false);
       _show('Enter a device ID and current session ID first.');
       return;
     }
@@ -115,13 +130,28 @@ class _ZyraHomeState extends State<ZyraHome> {
         payload: payload,
         commandId: 'flutter-${DateTime.now().microsecondsSinceEpoch}',
       );
+      final detail = result.message ?? '$action · ${result.status ?? 'completed'}';
       if (mounted) {
-        setState(() => lastAction = result.message ?? '$action · ${result.status ?? 'completed'}');
+        setState(() {
+          lastAction = detail;
+          activity.insert(
+            0,
+            _ActivityEntry(
+              title: action,
+              detail: detail,
+              success: result.success,
+              time: DateTime.now(),
+            ),
+          );
+          if (activity.length > 25) activity.removeLast();
+        });
         _show(result.message ?? (result.success ? 'Action completed.' : 'Action rejected.'));
       }
     } on ZyraApiException catch (error) {
+      _recordActivity(action, 'Rejected: ${error.message}', success: false);
       if (mounted) _show(error.message);
     } catch (error) {
+      _recordActivity(action, 'Request failed: $error', success: false);
       if (mounted) _show('ZYRA request failed: $error');
     } finally {
       if (mounted) setState(() => running = false);
@@ -197,10 +227,66 @@ class _ZyraHomeState extends State<ZyraHome> {
 
   Widget _page(bool wide) => switch (tab) {
         ZyraTab.home => _home(wide),
-        ZyraTab.activity => _info('Activity', Icons.bolt_outlined, lastAction ?? 'No protected action has run yet.'),
+        ZyraTab.activity => _activityPage(),
         ZyraTab.devices => const ZyraDevicesPage(),
         ZyraTab.settings => _info('Settings', Icons.tune_outlined, 'Advanced controls and privacy settings.'),
       };
+
+  Widget _activityPage() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 40),
+      children: [
+        Row(children: [
+          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Protected activity', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700)),
+            SizedBox(height: 5),
+            Text('Recent actions from this ZYRA client session.', style: TextStyle(color: Colors.white54)),
+          ])),
+          if (activity.isNotEmpty)
+            TextButton.icon(
+              onPressed: () => setState(activity.clear),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Clear'),
+            ),
+        ]),
+        const SizedBox(height: 20),
+        if (activity.isEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(30),
+              child: Column(children: const [
+                Icon(Icons.history, size: 42),
+                SizedBox(height: 12),
+                Text('No activity yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                SizedBox(height: 6),
+                Text('Run an allowlisted Quick action and its result will appear here.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white54)),
+              ]),
+            ),
+          )
+        else
+          for (final entry in activity) _activityTile(entry),
+      ],
+    );
+  }
+
+  Widget _activityTile(_ActivityEntry entry) {
+    final icon = entry.success ? Icons.check_circle_outline : Icons.error_outline;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: Icon(icon),
+        title: Text(entry.title),
+        subtitle: Text(entry.detail),
+        trailing: Text(_formatTime(entry.time), style: const TextStyle(color: Colors.white54, fontSize: 11)),
+      ),
+    );
+  }
+
+  String _formatTime(DateTime time) {
+    final hour = time.hour.toString().padLeft(2, '0');
+    final minute = time.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
 
   Widget _home(bool wide) => ListView(
         padding: EdgeInsets.fromLTRB(wide ? 38 : 22, 24, wide ? 38 : 22, 40),
@@ -263,6 +349,14 @@ class _ZyraHomeState extends State<ZyraHome> {
       );
 
   Widget _info(String title, IconData icon, String body) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Card(child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(icon, size: 42), const SizedBox(height: 16), Text(title, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700)), const SizedBox(height: 8), Text(body, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white54))])))));
+}
+
+class _ActivityEntry {
+  const _ActivityEntry({required this.title, required this.detail, required this.success, required this.time});
+  final String title;
+  final String detail;
+  final bool success;
+  final DateTime time;
 }
 
 class _ActionTile extends StatelessWidget {
