@@ -11,7 +11,11 @@ void main() {
 
     final calculator = find.text('Open calculator');
     if (calculator.evaluate().isEmpty) {
-      await tester.drag(find.byType(Scrollable).first, const Offset(0, -500));
+      await tester.dragUntilVisible(
+        calculator,
+        find.byType(Scrollable).first,
+        const Offset(0, -300),
+      );
       await tester.pumpAndSettle();
     }
     expect(calculator, findsOneWidget);
