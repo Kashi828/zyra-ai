@@ -7,6 +7,7 @@ void main() {
 
     expect(find.text('ZYRA'), findsOneWidget);
     expect(find.text('How can I help?'), findsOneWidget);
-    expect(find.text('Protected'), findsOneWidget);
+    expect(find.text('Secure session'), findsOneWidget);
+    expect(find.text('Quick actions'), findsOneWidget);
   });
 }
