@@ -75,19 +75,21 @@ void main() {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final service = ZyraService(baseUrl: 'http://${server.address.address}:${server.port}');
       final responseFuture = service.executeRemoteCommand(const ZyraSessionCredentials(deviceId: 'device-123', sessionId: 'session-456'), action: 'open_app', payload: {'name': 'calculator'});
+      final errorFuture = responseFuture.then<void>(
+        (_) => fail('Expected a ZyraApiException'),
+        onError: (Object error, StackTrace stackTrace) {
+          expect(error, isA<ZyraApiException>());
+          final apiError = error as ZyraApiException;
+          expect(apiError.statusCode, HttpStatus.forbidden);
+          expect(apiError.message, 'session is not authorized');
+        },
+      );
       final request = await server.first;
       request.response.statusCode = HttpStatus.forbidden;
       request.response.headers.contentType = ContentType.json;
       request.response.write(jsonEncode({'detail': 'session is not authorized'}));
       await request.response.close();
-
-      try {
-        await responseFuture;
-        fail('Expected a ZyraApiException');
-      } on ZyraApiException catch (error) {
-        expect(error.statusCode, HttpStatus.forbidden);
-        expect(error.message, 'session is not authorized');
-      }
+      await errorFuture;
       await server.close(force: true);
     });
   });
