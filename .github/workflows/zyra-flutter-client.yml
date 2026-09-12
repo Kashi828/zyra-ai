@@ -30,6 +30,9 @@ jobs:
       - name: Analyze
         working-directory: clients/zyra_flutter
         run: flutter analyze
+      - name: Test service contracts
+        working-directory: clients/zyra_flutter
+        run: flutter test
       - name: Build Android beta APK
         working-directory: clients/zyra_flutter
         run: flutter build apk --debug
@@ -61,6 +64,9 @@ jobs:
       - name: Analyze
         working-directory: clients/zyra_flutter
         run: flutter analyze
+      - name: Test service contracts
+        working-directory: clients/zyra_flutter
+        run: flutter test
       - name: Build Windows beta app
         working-directory: clients/zyra_flutter
         run: flutter build windows
