@@ -81,16 +81,13 @@ void main() {
       request.response.write(jsonEncode({'detail': 'session is not authorized'}));
       await request.response.close();
 
-      ZyraApiException? error;
       try {
         await responseFuture;
         fail('Expected a ZyraApiException');
-      } on ZyraApiException catch (caught) {
-        error = caught;
+      } on ZyraApiException catch (error) {
+        expect(error.statusCode, HttpStatus.forbidden);
+        expect(error.message, 'session is not authorized');
       }
-      expect(error, isNotNull);
-      expect(error!.statusCode, HttpStatus.forbidden);
-      expect(error.message, 'session is not authorized');
       await server.close(force: true);
     });
   });
