@@ -46,6 +46,48 @@ void main() {
     });
   });
 
+  group('connection readiness contract', () {
+    test('reports ready only when all required Windows capabilities are present', () {
+      final ready = ZyraConnectionStatus.fromJson({
+        'state': 'ready',
+        'device_id': 'windows-1',
+        'session_id': 'session-1',
+        'session_active': true,
+        'device_revoked': false,
+        'capabilities': ['windows.apps', 'windows.files.read', 'windows.browser'],
+      });
+      expect(ready.state, ZyraConnectionState.ready);
+      expect(ready.isReady, isTrue);
+    });
+
+    test('reachable is not authenticated or ready', () {
+      final reachable = ZyraConnectionStatus.fromJson({'state': 'reachable'});
+      expect(reachable.state, ZyraConnectionState.reachable);
+      expect(reachable.isAuthenticated, isFalse);
+      expect(reachable.isReady, isFalse);
+    });
+
+    test('revoked or inactive sessions cannot become ready', () {
+      final revoked = ZyraConnectionStatus.fromJson({
+        'state': 'ready',
+        'device_id': 'windows-1',
+        'session_id': 'session-1',
+        'session_active': true,
+        'device_revoked': true,
+        'capabilities': ['windows.apps', 'windows.files.read', 'windows.browser'],
+      });
+      expect(revoked.isReady, isFalse);
+
+      final inactive = ZyraConnectionStatus.fromJson({
+        'state': 'ready',
+        'session_active': false,
+        'device_revoked': false,
+        'capabilities': ['windows.apps', 'windows.files.read', 'windows.browser'],
+      });
+      expect(inactive.isReady, isFalse);
+    });
+  });
+
   group('authenticated command bridge', () {
     test('serializes authenticated command request and parses result', () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
