@@ -11,10 +11,10 @@ class FakeTransport:
         return {"ok": True, "action": action}
 
 
-def make_bridge():
+def make_bridge(capabilities=("iot.telemetry", "iot.gpio")):
     transport = FakeTransport()
     adapter = NodeMCUAdapter(
-        NodeMCUDevice("nodemcu-1", "http://127.0.0.1:8080", frozenset({"iot.telemetry", "iot.gpio"})),
+        NodeMCUDevice("nodemcu-1", "http://127.0.0.1:8080", frozenset(capabilities)),
         transport,
     )
     return NodeMCUCommandBridge(adapter), transport
@@ -48,3 +48,11 @@ def test_bridge_routes_gpio_write_when_capability_is_granted():
     result = bridge.execute("gpio.write", {"pin": 5, "value": 1}, capabilities={"iot.gpio"})
     assert result.ok is True
     assert transport.calls == [("http://127.0.0.1:8080", "gpio.write", {"pin": 5, "value": 1})]
+
+
+def test_bridge_blocks_capability_not_enrolled_on_device():
+    bridge, transport = make_bridge(("iot.telemetry",))
+    result = bridge.execute("gpio.write", {"pin": 5, "value": 1}, capabilities={"iot.gpio"})
+    assert result.ok is False
+    assert result.message == "NodeMCU device lacks capability"
+    assert transport.calls == []
