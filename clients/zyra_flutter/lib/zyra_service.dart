@@ -29,6 +29,40 @@ class ZyraService {
     }
   }
 
+  /// Separates network reachability from authenticated readiness.
+  /// A reachable API is never treated as an authorized Windows session.
+  Future<ZyraConnectionStatus> connectionStatus(ZyraSessionCredentials? credentials) async {
+    final reachable = await health();
+    if (!reachable) return const ZyraConnectionStatus(ZyraConnectionState.offline);
+    if (credentials == null || credentials.deviceId.isEmpty || credentials.sessionId.isEmpty) {
+      return const ZyraConnectionStatus(ZyraConnectionState.reachable);
+    }
+    try {
+      final inventory = await listSessions(credentials);
+      final current = inventory.sessions.where((session) => session.sessionId == credentials.sessionId).toList();
+      if (current.isEmpty || !current.first.active || current.first.revoked || inventory.device.revoked) {
+        return const ZyraConnectionStatus(ZyraConnectionState.authenticated, ready: false, detail: 'Session is not active.');
+      }
+      const required = {'windows.apps', 'windows.files.read', 'windows.browser'};
+      final missing = required.difference(inventory.device.capabilities.toSet());
+      if (missing.isNotEmpty) {
+        return ZyraConnectionStatus(
+          ZyraConnectionState.authenticated,
+          ready: false,
+          detail: 'Missing Windows capabilities: ${missing.join(', ')}',
+        );
+      }
+      return const ZyraConnectionStatus(ZyraConnectionState.ready, ready: true, detail: 'Windows agent is authenticated and ready.');
+    } on ZyraApiException catch (error) {
+      if (error.statusCode == 401 || error.statusCode == 403) {
+        return ZyraConnectionStatus(ZyraConnectionState.reachable, detail: 'Windows is reachable but authentication is required.');
+      }
+      return ZyraConnectionStatus(ZyraConnectionState.error, detail: error.message);
+    } catch (error) {
+      return ZyraConnectionStatus(ZyraConnectionState.error, detail: '$error');
+    }
+  }
+
   Future<List<ZyraDevice>> devices() async {
     final data = await _getJson('/devices');
     final items = data is Map<String, dynamic> ? data['devices'] : data;
@@ -124,6 +158,15 @@ class ZyraService {
     } catch (_) {}
     throw ZyraApiException(detail, statusCode: statusCode);
   }
+}
+
+enum ZyraConnectionState { offline, reachable, authenticated, ready, error }
+
+class ZyraConnectionStatus {
+  const ZyraConnectionStatus(this.state, {this.ready = false, this.detail = ''});
+  final ZyraConnectionState state;
+  final bool ready;
+  final String detail;
 }
 
 class ZyraApiException implements Exception {
