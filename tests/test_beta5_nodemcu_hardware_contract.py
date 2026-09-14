@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_nodemcu_transport_exposes_required_allowlist_and_secret_header():
     text = (ROOT / "core" / "iot_nodemcu_transport.py").read_text(encoding="utf-8")
-    assert 'ALLOWED_ACTIONS = {"status", "gpio.read", "gpio.write"}' in text
+    assert 'ALLOWED_ACTIONS = frozenset({"status", "gpio.read", "gpio.write"})' in text
     assert '"X-Zyra-Device-Secret"' in text
     assert '"/v1/{action}"' in text
 
