@@ -29,8 +29,6 @@ class ZyraService {
     }
   }
 
-  /// Separates network reachability from authenticated readiness.
-  /// A reachable API is never treated as an authorized Windows session.
   Future<ZyraConnectionStatus> connectionStatus(ZyraSessionCredentials? credentials) async {
     final reachable = await health();
     if (!reachable) return const ZyraConnectionStatus(ZyraConnectionState.offline);
@@ -41,21 +39,17 @@ class ZyraService {
       final inventory = await listSessions(credentials);
       final current = inventory.sessions.where((session) => session.sessionId == credentials.sessionId).toList();
       if (current.isEmpty || !current.first.active || current.first.revoked || inventory.device.revoked) {
-        return const ZyraConnectionStatus(ZyraConnectionState.authenticated, ready: false, detail: 'Session is not active.');
+        return const ZyraConnectionStatus(ZyraConnectionState.authenticated, detail: 'Session is not active.');
       }
       const required = {'windows.apps', 'windows.files.read', 'windows.browser'};
       final missing = required.difference(inventory.device.capabilities.toSet());
       if (missing.isNotEmpty) {
-        return ZyraConnectionStatus(
-          ZyraConnectionState.authenticated,
-          ready: false,
-          detail: 'Missing Windows capabilities: ${missing.join(', ')}',
-        );
+        return ZyraConnectionStatus(ZyraConnectionState.authenticated, detail: 'Missing Windows capabilities: ${missing.join(', ')}');
       }
       return const ZyraConnectionStatus(ZyraConnectionState.ready, ready: true, detail: 'Windows agent is authenticated and ready.');
     } on ZyraApiException catch (error) {
       if (error.statusCode == 401 || error.statusCode == 403) {
-        return ZyraConnectionStatus(ZyraConnectionState.reachable, detail: 'Windows is reachable but authentication is required.');
+        return const ZyraConnectionStatus(ZyraConnectionState.reachable, detail: 'Windows is reachable but authentication is required.');
       }
       return ZyraConnectionStatus(ZyraConnectionState.error, detail: error.message);
     } catch (error) {
@@ -71,27 +65,16 @@ class ZyraService {
   }
 
   Future<ZyraSessionInventory> listSessions(ZyraSessionCredentials credentials, {bool includeInactive = false}) async {
-    final data = await _postJson('/v1/session/list', {
-      ...credentials.toJson(),
-      'include_inactive': includeInactive,
-    });
+    final data = await _postJson('/v1/session/list', {...credentials.toJson(), 'include_inactive': includeInactive});
     return ZyraSessionInventory.fromJson(data);
   }
 
   Future<ZyraSessionRevokeResult> revokeSession(ZyraSessionCredentials credentials, String targetSessionId) async {
-    final data = await _postJson('/v1/session/revoke', {
-      ...credentials.toJson(),
-      'target_session_id': targetSessionId,
-    });
+    final data = await _postJson('/v1/session/revoke', {...credentials.toJson(), 'target_session_id': targetSessionId});
     return ZyraSessionRevokeResult.fromJson(data);
   }
 
-  Future<ZyraCommandResult> executeRemoteCommand(
-    ZyraSessionCredentials credentials, {
-    required String action,
-    Map<String, dynamic> payload = const {},
-    String? commandId,
-  }) async {
+  Future<ZyraCommandResult> executeRemoteCommand(ZyraSessionCredentials credentials, {required String action, Map<String, dynamic> payload = const {}, String? commandId}) async {
     final data = await _postJson('/v1/remote/commands', {
       ...credentials.toJson(),
       'action': action,
@@ -105,8 +88,7 @@ class ZyraService {
   Future<ZyraCommandResult> execute(String command, {String? deviceId}) async {
     final body = <String, dynamic>{'command': command};
     if (deviceId != null && deviceId.isNotEmpty) body['device_id'] = deviceId;
-    final data = await _postJson('/commands', body);
-    return ZyraCommandResult.fromJson(data);
+    return ZyraCommandResult.fromJson(await _postJson('/commands', body));
   }
 
   Future<dynamic> _getJson(String path) async {
@@ -118,13 +100,9 @@ class ZyraService {
       final text = await utf8.decoder.bind(response).join();
       _checkResponse(response.statusCode, text);
       return jsonDecode(text);
-    } on TimeoutException {
-      throw const ZyraApiException('ZYRA API request timed out');
-    } on SocketException catch (error) {
-      throw ZyraApiException('ZYRA API is unreachable: ${error.message}');
-    } finally {
-      client.close(force: true);
-    }
+    } on TimeoutException { throw const ZyraApiException('ZYRA API request timed out'); }
+    on SocketException catch (error) { throw ZyraApiException('ZYRA API is unreachable: ${error.message}'); }
+    finally { client.close(force: true); }
   }
 
   Future<Map<String, dynamic>> _postJson(String path, Map<String, dynamic> body) async {
@@ -139,13 +117,9 @@ class ZyraService {
       _checkResponse(response.statusCode, text);
       final decoded = jsonDecode(text);
       return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{'result': decoded};
-    } on TimeoutException {
-      throw const ZyraApiException('ZYRA API request timed out');
-    } on SocketException catch (error) {
-      throw ZyraApiException('ZYRA API is unreachable: ${error.message}');
-    } finally {
-      client.close(force: true);
-    }
+    } on TimeoutException { throw const ZyraApiException('ZYRA API request timed out'); }
+    on SocketException catch (error) { throw ZyraApiException('ZYRA API is unreachable: ${error.message}'); }
+    finally { client.close(force: true); }
   }
 
   void _checkResponse(int statusCode, String text) {
@@ -163,18 +137,47 @@ class ZyraService {
 enum ZyraConnectionState { offline, reachable, authenticated, ready, error }
 
 class ZyraConnectionStatus {
-  const ZyraConnectionStatus(this.state, {this.ready = false, this.detail = ''});
+  const ZyraConnectionStatus(this.state, {this.deviceId = '', this.sessionId = '', this.capabilities = const [], this.sessionActive = false, this.deviceRevoked = false, this.ready = false, this.detail = ''});
   final ZyraConnectionState state;
+  final String deviceId;
+  final String sessionId;
+  final List<String> capabilities;
+  final bool sessionActive;
+  final bool deviceRevoked;
   final bool ready;
   final String detail;
+
+  bool get isAuthenticated => state == ZyraConnectionState.authenticated || state == ZyraConnectionState.ready;
+  bool get isReady => state == ZyraConnectionState.ready && ready && sessionActive && !deviceRevoked && _requiredCapabilities.every(capabilities.contains);
+
+  static const _requiredCapabilities = ['windows.apps', 'windows.files.read', 'windows.browser'];
+
+  factory ZyraConnectionStatus.fromJson(Map<String, dynamic> json) {
+    final rawCapabilities = json['capabilities'];
+    final capabilities = rawCapabilities is List ? rawCapabilities.map((value) => '$value').toList() : const <String>[];
+    final requestedState = '${json['state'] ?? 'error'}'.toLowerCase();
+    final state = ZyraConnectionState.values.firstWhere((value) => value.name == requestedState, orElse: () => ZyraConnectionState.error);
+    final sessionActive = json['session_active'] == true;
+    final deviceRevoked = json['device_revoked'] == true;
+    final canBeReady = state == ZyraConnectionState.ready && sessionActive && !deviceRevoked && _requiredCapabilities.every(capabilities.contains);
+    return ZyraConnectionStatus(
+      canBeReady ? ZyraConnectionState.ready : (state == ZyraConnectionState.ready ? ZyraConnectionState.authenticated : state),
+      deviceId: '${json['device_id'] ?? ''}',
+      sessionId: '${json['session_id'] ?? ''}',
+      capabilities: capabilities,
+      sessionActive: sessionActive,
+      deviceRevoked: deviceRevoked,
+      ready: canBeReady,
+      detail: '${json['detail'] ?? ''}',
+    );
+  }
 }
 
 class ZyraApiException implements Exception {
   const ZyraApiException(this.message, {this.statusCode});
   final String message;
   final int? statusCode;
-  @override
-  String toString() => message;
+  @override String toString() => message;
 }
 
 class ZyraSessionCredentials {
@@ -189,72 +192,35 @@ class ZyraSessionInventory {
   final ZyraSessionDevice device;
   final ZyraSessionSummary summary;
   final List<ZyraSession> sessions;
-  factory ZyraSessionInventory.fromJson(Map<String, dynamic> json) {
-    final rawSessions = json['sessions'];
-    return ZyraSessionInventory(
-      device: ZyraSessionDevice.fromJson(_map(json['device'])),
-      summary: ZyraSessionSummary.fromJson(_map(json['summary'])),
-      sessions: rawSessions is List
-          ? rawSessions.whereType<Map>().map((item) => ZyraSession.fromJson(Map<String, dynamic>.from(item))).toList()
-          : const [],
-    );
-  }
+  factory ZyraSessionInventory.fromJson(Map<String, dynamic> json) => ZyraSessionInventory(
+    device: ZyraSessionDevice.fromJson(_map(json['device'])),
+    summary: ZyraSessionSummary.fromJson(_map(json['summary'])),
+    sessions: json['sessions'] is List ? (json['sessions'] as List).whereType<Map>().map((item) => ZyraSession.fromJson(Map<String, dynamic>.from(item))).toList() : const [],
+  );
 }
 
 class ZyraSessionDevice {
   const ZyraSessionDevice({required this.deviceId, required this.capabilities, required this.revoked, this.createdAt});
-  final String deviceId;
-  final List<String> capabilities;
-  final bool revoked;
-  final int? createdAt;
-  factory ZyraSessionDevice.fromJson(Map<String, dynamic> json) => ZyraSessionDevice(
-        deviceId: '${json['device_id'] ?? ''}',
-        capabilities: json['capabilities'] is List ? (json['capabilities'] as List).map((v) => '$v').toList() : const [],
-        revoked: json['revoked'] == true,
-        createdAt: json['created_at'] is num ? (json['created_at'] as num).toInt() : null,
-      );
+  final String deviceId; final List<String> capabilities; final bool revoked; final int? createdAt;
+  factory ZyraSessionDevice.fromJson(Map<String, dynamic> json) => ZyraSessionDevice(deviceId: '${json['device_id'] ?? ''}', capabilities: json['capabilities'] is List ? (json['capabilities'] as List).map((v) => '$v').toList() : const [], revoked: json['revoked'] == true, createdAt: json['created_at'] is num ? (json['created_at'] as num).toInt() : null);
 }
 
 class ZyraSessionSummary {
   const ZyraSessionSummary({required this.total, required this.active, required this.inactive});
-  final int total;
-  final int active;
-  final int inactive;
-  factory ZyraSessionSummary.fromJson(Map<String, dynamic> json) => ZyraSessionSummary(
-        total: _int(json['total']),
-        active: _int(json['active']),
-        inactive: _int(json['inactive']),
-      );
+  final int total; final int active; final int inactive;
+  factory ZyraSessionSummary.fromJson(Map<String, dynamic> json) => ZyraSessionSummary(total: _int(json['total']), active: _int(json['active']), inactive: _int(json['inactive']));
 }
 
 class ZyraSession {
   const ZyraSession({required this.sessionId, required this.deviceId, required this.active, required this.revoked, required this.current, required this.expiresAt});
-  final String sessionId;
-  final String deviceId;
-  final bool active;
-  final bool revoked;
-  final bool current;
-  final int expiresAt;
-  factory ZyraSession.fromJson(Map<String, dynamic> json) => ZyraSession(
-        sessionId: '${json['session_id'] ?? ''}',
-        deviceId: '${json['device_id'] ?? ''}',
-        active: json['active'] == true,
-        revoked: json['revoked'] == true,
-        current: json['current'] == true,
-        expiresAt: _int(json['expires_at']),
-      );
+  final String sessionId; final String deviceId; final bool active; final bool revoked; final bool current; final int expiresAt;
+  factory ZyraSession.fromJson(Map<String, dynamic> json) => ZyraSession(sessionId: '${json['session_id'] ?? ''}', deviceId: '${json['device_id'] ?? ''}', active: json['active'] == true, revoked: json['revoked'] == true, current: json['current'] == true, expiresAt: _int(json['expires_at']));
 }
 
 class ZyraSessionRevokeResult {
   const ZyraSessionRevokeResult({required this.revoked, required this.sessionId, required this.currentSession});
-  final bool revoked;
-  final String sessionId;
-  final bool currentSession;
-  factory ZyraSessionRevokeResult.fromJson(Map<String, dynamic> json) => ZyraSessionRevokeResult(
-        revoked: json['revoked'] == true,
-        sessionId: '${json['session_id'] ?? ''}',
-        currentSession: json['current_session'] == true,
-      );
+  final bool revoked; final String sessionId; final bool currentSession;
+  factory ZyraSessionRevokeResult.fromJson(Map<String, dynamic> json) => ZyraSessionRevokeResult(revoked: json['revoked'] == true, sessionId: '${json['session_id'] ?? ''}', currentSession: json['current_session'] == true);
 }
 
 int _int(dynamic value) => value is num ? value.toInt() : int.tryParse('$value') ?? 0;
@@ -262,30 +228,12 @@ Map<String, dynamic> _map(dynamic value) => value is Map ? Map<String, dynamic>.
 
 class ZyraDevice {
   const ZyraDevice({required this.id, required this.name, required this.online, this.platform});
-  final String id;
-  final String name;
-  final bool online;
-  final String? platform;
-  factory ZyraDevice.fromJson(Map<String, dynamic> json) => ZyraDevice(
-        id: '${json['id'] ?? json['device_id'] ?? ''}',
-        name: '${json['name'] ?? json['device_name'] ?? 'Unknown device'}',
-        online: json['online'] == true || json['status'] == 'online',
-        platform: json['platform']?.toString(),
-      );
+  final String id; final String name; final bool online; final String? platform;
+  factory ZyraDevice.fromJson(Map<String, dynamic> json) => ZyraDevice(id: '${json['id'] ?? json['device_id'] ?? ''}', name: '${json['name'] ?? json['device_name'] ?? 'Unknown device'}', online: json['online'] == true || json['status'] == 'online', platform: json['platform']?.toString());
 }
 
 class ZyraCommandResult {
   const ZyraCommandResult({this.message, this.success = true, this.data, this.action, this.status});
-  final String? message;
-  final bool success;
-  final dynamic data;
-  final String? action;
-  final String? status;
-  factory ZyraCommandResult.fromJson(Map<String, dynamic> json) => ZyraCommandResult(
-        message: json['message']?.toString() ?? json['result']?.toString(),
-        success: json['accepted'] == true || json['success'] != false,
-        data: json['data'] ?? json['result'],
-        action: json['action']?.toString(),
-        status: json['status']?.toString(),
-      );
+  final String? message; final bool success; final dynamic data; final String? action; final String? status;
+  factory ZyraCommandResult.fromJson(Map<String, dynamic> json) => ZyraCommandResult(message: json['message']?.toString() ?? json['result']?.toString(), success: json['accepted'] == true || json['success'] != false, data: json['data'] ?? json['result'], action: json['action']?.toString(), status: json['status']?.toString());
 }
