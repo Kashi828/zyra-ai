@@ -2,32 +2,36 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'endpoint_policy.dart';
+import 'connection_retry.dart';
+import 'connection_target.dart';
 
 class ZyraService {
-  ZyraService({String? baseUrl}) : baseUrl = (baseUrl ?? _defaultBaseUrl).replaceFirst(RegExp(r'/$'), '') {
-    ZyraEndpointPolicy.validate(this.baseUrl);
-  }
+  ZyraService({String? baseUrl, ZyraConnectionRetry retry = const ZyraConnectionRetry()})
+      : target = ZyraConnectionTarget.resolve(configuredUrl: baseUrl ?? _configuredBaseUrl),
+        retry = retry;
 
-  final String baseUrl;
+  final ZyraConnectionTarget target;
+  final ZyraConnectionRetry retry;
+  String get baseUrl => target.uri.toString().replaceFirst(RegExp(r'/$'), '');
 
-  static String get _defaultBaseUrl {
+  static String? get _configuredBaseUrl {
     const configured = String.fromEnvironment('ZYRA_API_URL');
-    if (configured.isNotEmpty) return configured;
-    if (Platform.isAndroid) return 'http://10.0.2.2:8000';
-    return 'http://127.0.0.1:8000';
+    return configured.isEmpty ? null : configured;
   }
 
   Future<bool> health() async {
     try {
-      final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
-      try {
-        final request = await client.getUrl(Uri.parse('$baseUrl/health')).timeout(const Duration(seconds: 6));
-        final response = await request.close().timeout(const Duration(seconds: 10));
-        return response.statusCode >= 200 && response.statusCode < 300;
-      } finally {
-        client.close(force: true);
-      }
+      return await retry.run(() async {
+        final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+        try {
+          final request = await client.getUrl(Uri.parse('$baseUrl/health')).timeout(const Duration(seconds: 6));
+          final response = await request.close().timeout(const Duration(seconds: 10));
+          await response.drain<void>();
+          return response.statusCode >= 200 && response.statusCode < 300;
+        } finally {
+          client.close(force: true);
+        }
+      });
     } catch (_) {
       return false;
     }
@@ -96,34 +100,50 @@ class ZyraService {
   }
 
   Future<dynamic> _getJson(String path) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
     try {
-      final request = await client.getUrl(Uri.parse('$baseUrl$path')).timeout(const Duration(seconds: 6));
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response = await request.close().timeout(const Duration(seconds: 10));
-      final text = await utf8.decoder.bind(response).join();
-      _checkResponse(response.statusCode, text);
-      return jsonDecode(text);
-    } on TimeoutException { throw const ZyraApiException('ZYRA API request timed out'); }
-    on SocketException catch (error) { throw ZyraApiException('ZYRA API is unreachable: ${error.message}'); }
-    finally { client.close(force: true); }
+      return await retry.run(() async {
+        final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+        try {
+          final request = await client.getUrl(Uri.parse('$baseUrl$path')).timeout(const Duration(seconds: 6));
+          request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+          final response = await request.close().timeout(const Duration(seconds: 10));
+          final text = await utf8.decoder.bind(response).join();
+          _checkResponse(response.statusCode, text);
+          return jsonDecode(text);
+        } finally {
+          client.close(force: true);
+        }
+      });
+    } on TimeoutException {
+      throw const ZyraApiException('ZYRA API request timed out');
+    } on SocketException catch (error) {
+      throw ZyraApiException('ZYRA API is unreachable: ${error.message}');
+    }
   }
 
   Future<Map<String, dynamic>> _postJson(String path, Map<String, dynamic> body) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
     try {
-      final request = await client.postUrl(Uri.parse('$baseUrl$path')).timeout(const Duration(seconds: 6));
-      request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.write(jsonEncode(body));
-      final response = await request.close().timeout(const Duration(seconds: 10));
-      final text = await utf8.decoder.bind(response).join();
-      _checkResponse(response.statusCode, text);
-      final decoded = jsonDecode(text);
-      return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{'result': decoded};
-    } on TimeoutException { throw const ZyraApiException('ZYRA API request timed out'); }
-    on SocketException catch (error) { throw ZyraApiException('ZYRA API is unreachable: ${error.message}'); }
-    finally { client.close(force: true); }
+      return await retry.run(() async {
+        final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+        try {
+          final request = await client.postUrl(Uri.parse('$baseUrl$path')).timeout(const Duration(seconds: 6));
+          request.headers.contentType = ContentType.json;
+          request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+          request.write(jsonEncode(body));
+          final response = await request.close().timeout(const Duration(seconds: 10));
+          final text = await utf8.decoder.bind(response).join();
+          _checkResponse(response.statusCode, text);
+          final decoded = jsonDecode(text);
+          return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{'result': decoded};
+        } finally {
+          client.close(force: true);
+        }
+      });
+    } on TimeoutException {
+      throw const ZyraApiException('ZYRA API request timed out');
+    } on SocketException catch (error) {
+      throw ZyraApiException('ZYRA API is unreachable: ${error.message}');
+    }
   }
 
   void _checkResponse(int statusCode, String text) {
@@ -150,12 +170,9 @@ class ZyraConnectionStatus {
   final bool deviceRevoked;
   final bool ready;
   final String detail;
-
   bool get isAuthenticated => state == ZyraConnectionState.authenticated || state == ZyraConnectionState.ready;
   bool get isReady => state == ZyraConnectionState.ready && ready && sessionActive && !deviceRevoked && _requiredCapabilities.every(capabilities.contains);
-
   static const _requiredCapabilities = ['windows.apps', 'windows.files.read', 'windows.browser'];
-
   factory ZyraConnectionStatus.fromJson(Map<String, dynamic> json) {
     final rawCapabilities = json['capabilities'];
     final capabilities = rawCapabilities is List ? rawCapabilities.map((value) => '$value').toList() : const <String>[];
@@ -164,16 +181,7 @@ class ZyraConnectionStatus {
     final sessionActive = json['session_active'] == true;
     final deviceRevoked = json['device_revoked'] == true;
     final canBeReady = state == ZyraConnectionState.ready && sessionActive && !deviceRevoked && _requiredCapabilities.every(capabilities.contains);
-    return ZyraConnectionStatus(
-      canBeReady ? ZyraConnectionState.ready : (state == ZyraConnectionState.ready ? ZyraConnectionState.authenticated : state),
-      deviceId: '${json['device_id'] ?? ''}',
-      sessionId: '${json['session_id'] ?? ''}',
-      capabilities: capabilities,
-      sessionActive: sessionActive,
-      deviceRevoked: deviceRevoked,
-      ready: canBeReady,
-      detail: '${json['detail'] ?? ''}',
-    );
+    return ZyraConnectionStatus(canBeReady ? ZyraConnectionState.ready : (state == ZyraConnectionState.ready ? ZyraConnectionState.authenticated : state), deviceId: '${json['device_id'] ?? ''}', sessionId: '${json['session_id'] ?? ''}', capabilities: capabilities, sessionActive: sessionActive, deviceRevoked: deviceRevoked, ready: canBeReady, detail: '${json['detail'] ?? ''}');
   }
 }
 
@@ -196,11 +204,7 @@ class ZyraSessionInventory {
   final ZyraSessionDevice device;
   final ZyraSessionSummary summary;
   final List<ZyraSession> sessions;
-  factory ZyraSessionInventory.fromJson(Map<String, dynamic> json) => ZyraSessionInventory(
-    device: ZyraSessionDevice.fromJson(_map(json['device'])),
-    summary: ZyraSessionSummary.fromJson(_map(json['summary'])),
-    sessions: json['sessions'] is List ? (json['sessions'] as List).whereType<Map>().map((item) => ZyraSession.fromJson(Map<String, dynamic>.from(item))).toList() : const [],
-  );
+  factory ZyraSessionInventory.fromJson(Map<String, dynamic> json) => ZyraSessionInventory(device: ZyraSessionDevice.fromJson(_map(json['device'])), summary: ZyraSessionSummary.fromJson(_map(json['summary'])), sessions: json['sessions'] is List ? (json['sessions'] as List).whereType<Map>().map((item) => ZyraSession.fromJson(Map<String, dynamic>.from(item))).toList() : const []);
 }
 
 class ZyraSessionDevice {
