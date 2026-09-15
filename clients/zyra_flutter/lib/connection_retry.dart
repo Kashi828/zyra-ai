@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 /// Small, platform-neutral retry policy for transient ZYRA API connectivity.
 /// Backoff is capped so the UI remains responsive during LAN outages.
