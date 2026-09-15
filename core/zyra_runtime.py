@@ -36,22 +36,79 @@ class ZyraRuntime:
         context = dict(context or {})
         task_id = uuid.uuid4().hex
         clean_goal = goal.strip()
+        plan = list(context.get("plan") or [])
         with self._lock:
-            self.state.active_tasks[task_id] = {"goal": clean_goal, "status": "queued", "context": context}
+            task = {"goal": clean_goal, "status": "queued", "context": context}
+            if plan:
+                task["plan"] = plan
+                task["current_step"] = 0
+                task["step_status"] = ["queued"] * len(plan)
+            self.state.active_tasks[task_id] = task
         if self.event_stream:
             self.event_stream.publish({"task_id": task_id, "event": "queued", "status": "queued", "detail": ""})
         hub = getattr(self, "realtime_hub", None)
         if hub:
-            hub.publish(RealtimeEvent(event_id=task_id, event_type="task.queued", device_id=context.get("device_id"), task_id=task_id, status="queued", payload={"goal": clean_goal}))
+            hub.publish(RealtimeEvent(event_id=task_id, event_type="task.queued", device_id=context.get("device_id"), task_id=task_id, status="queued", payload={"goal": clean_goal, "steps": len(plan)}))
 
-        action = context.get("action")
-        if not action or self.command_bridge is None:
+        if self.command_bridge is None:
+            return task_id
+        if plan:
+            self._execute_plan(task_id, plan, context)
             return task_id
 
+        action = context.get("action")
+        if not action:
+            return task_id
+        self._execute_single(task_id, action, dict(context.get("payload") or {}), context)
+        return task_id
+
+    def _execute_plan(self, task_id: str, plan: list[dict], context: dict) -> None:
+        from services.authenticated_command import CommandRequest
+        self.update_task(task_id, "running", f"Planning complete · {len(plan)} step(s)")
+        for index, step in enumerate(plan):
+            task = self.state.active_tasks.get(task_id)
+            if task is None or task.get("status") == "cancelled":
+                return
+            action = str(step.get("action", ""))
+            payload = dict(step.get("payload") or {})
+            if not action:
+                self.fail_task(task_id, f"plan step {index + 1} is invalid")
+                return
+            with self._lock:
+                task["current_step"] = index
+                task["step_status"][index] = "running"
+            self._publish(task_id, "running", f"Step {index + 1}/{len(plan)} · {action}")
+            try:
+                request = CommandRequest(
+                    session_id=str(context.get("session_id", "")),
+                    device_id=str(context.get("device_id", "")),
+                    action=action,
+                    payload=payload,
+                )
+                result = self.command_bridge.execute(request, command_id=f"{task_id}:{index}")
+            except Exception:
+                result = None
+            if result is None or not result.accepted:
+                with self._lock:
+                    task["step_status"][index] = "failed"
+                self.fail_task(task_id, result.message if result else "action execution failed")
+                return
+            with self._lock:
+                task["step_status"][index] = "completed"
+                task["last_result"] = result.message
+            self._publish(task_id, "running", f"Step {index + 1}/{len(plan)} completed · {result.message}")
+        self.complete_task(task_id, "agent plan completed")
+
+    def _execute_single(self, task_id: str, action: str, payload: dict, context: dict) -> None:
         self.update_task(task_id, "running", f"Executing {action}")
         try:
             from services.authenticated_command import CommandRequest
-            request = CommandRequest(session_id=str(context.get("session_id", "")), device_id=str(context.get("device_id", "")), action=str(action), payload=dict(context.get("payload") or {}))
+            request = CommandRequest(
+                session_id=str(context.get("session_id", "")),
+                device_id=str(context.get("device_id", "")),
+                action=str(action),
+                payload=payload,
+            )
             result = self.command_bridge.execute(request, command_id=task_id)
             if result.accepted:
                 self.complete_task(task_id, result.message)
@@ -59,7 +116,6 @@ class ZyraRuntime:
                 self.fail_task(task_id, result.message)
         except Exception:
             self.fail_task(task_id, "action execution failed")
-        return task_id
 
     def update_task(self, task_id: str, status: str, detail: str = "") -> None:
         with self._lock:
