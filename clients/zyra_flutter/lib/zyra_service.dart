@@ -2,8 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'endpoint_policy.dart';
+
 class ZyraService {
-  ZyraService({String? baseUrl}) : baseUrl = (baseUrl ?? _defaultBaseUrl).replaceFirst(RegExp(r'/$'), '');
+  ZyraService({String? baseUrl}) : baseUrl = (baseUrl ?? _defaultBaseUrl).replaceFirst(RegExp(r'/$'), '') {
+    ZyraEndpointPolicy.validate(this.baseUrl);
+  }
 
   final String baseUrl;
 
