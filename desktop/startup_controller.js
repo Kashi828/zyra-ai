@@ -93,3 +93,10 @@
     setTimeout(syncStartup, 50);
   }, { once: true });
 })();
+
+// Agent builder/console is loaded after the existing startup gate so the
+// workspace entry points are available without changing the startup contract.
+const agentWorkspaceScript = document.createElement("script");
+agentWorkspaceScript.src = "agent_workspace.js";
+agentWorkspaceScript.async = false;
+document.head.appendChild(agentWorkspaceScript);
