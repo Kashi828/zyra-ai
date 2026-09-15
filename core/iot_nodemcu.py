@@ -14,7 +14,7 @@ class NodeMCUDevice:
 
 
 class NodeMCUTransport(Protocol):
-    def request(self, endpoint: str, action: str, payload: Mapping[str, Any]) -> Mapping[str, Any]: ...
+    def request(self, action: str, payload: Mapping[str, Any] | None = None) -> Mapping[str, Any]: ...
 
 
 def validate_endpoint(endpoint: str) -> str:
@@ -25,7 +25,7 @@ def validate_endpoint(endpoint: str) -> str:
 
 
 class NodeMCUAdapter:
-    """Small allowlisted adapter for an enrolled NodeMCU/ESP device."""
+    """Allowlisted adapter for an enrolled NodeMCU/ESP device."""
 
     def __init__(self, device: NodeMCUDevice, transport: NodeMCUTransport):
         self.device = device
@@ -35,4 +35,4 @@ class NodeMCUAdapter:
     def execute(self, action: str, payload: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
         if action not in ALLOWED_ACTIONS:
             raise PermissionError("NodeMCU action is not allowed")
-        return self.transport.request(self.endpoint, action, payload or {})
+        return self.transport.request(action, payload or {})
