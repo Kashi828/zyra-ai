@@ -6,19 +6,14 @@ import 'package:zyra_flutter/connection_retry.dart';
 import 'package:zyra_flutter/zyra_service.dart';
 
 void main() {
-  test('POST retries a transient connection failure and succeeds', () async {
+  test('POST does not retry an HTTP application failure', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     var attempts = 0;
     server.listen((request) async {
       attempts++;
-      if (attempts == 1) {
-        request.response.headers.contentType = ContentType.json;
-        request.response.statusCode = HttpStatus.serviceUnavailable;
-        request.response.write(jsonEncode({'detail': 'temporary outage'}));
-      } else {
-        request.response.headers.contentType = ContentType.json;
-        request.response.write(jsonEncode({'accepted': true, 'action': 'open_app', 'status': 'completed', 'message': 'ok'}));
-      }
+      request.response.headers.contentType = ContentType.json;
+      request.response.statusCode = HttpStatus.serviceUnavailable;
+      request.response.write(jsonEncode({'detail': 'temporary outage'}));
       await request.response.close();
     });
 
@@ -27,8 +22,6 @@ void main() {
       retry: const ZyraConnectionRetry(maxAttempts: 3, baseDelay: Duration.zero),
     );
 
-    // HTTP 503 is an application response, not a transport failure; the
-    // service must not retry it.
     await expectLater(
       service.executeRemoteCommand(
         const ZyraSessionCredentials(deviceId: 'device-1', sessionId: 'session-1'),
@@ -40,7 +33,7 @@ void main() {
     await server.close(force: true);
   });
 
-  test('health retries socket failure using the shared retry policy', () async {
+  test('health uses the shared retry policy for unreachable targets', () async {
     final probe = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final port = probe.port;
     await probe.close();
