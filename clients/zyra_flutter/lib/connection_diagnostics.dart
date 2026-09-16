@@ -27,8 +27,10 @@ class ZyraConnectionDiagnostics {
       });
       return ZyraTransportProbe(
         reachable: statusCode >= 200 && statusCode < 500,
+        serverError: statusCode >= 500,
         statusCode: statusCode,
         latency: DateTime.now().difference(started),
+        reason: statusCode >= 500 ? 'server_error' : null,
       );
     } on TimeoutException {
       return ZyraTransportProbe(reachable: false, latency: DateTime.now().difference(started), reason: 'timeout');
@@ -41,9 +43,16 @@ class ZyraConnectionDiagnostics {
 }
 
 class ZyraTransportProbe {
-  const ZyraTransportProbe({required this.reachable, required this.latency, this.statusCode, this.reason});
+  const ZyraTransportProbe({
+    required this.reachable,
+    required this.latency,
+    this.statusCode,
+    this.reason,
+    this.serverError = false,
+  });
 
   final bool reachable;
+  final bool serverError;
   final Duration latency;
   final int? statusCode;
   final String? reason;
