@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'connection_diagnostics.dart';
 import 'session_context.dart';
 import 'zyra_service.dart';
 
@@ -15,9 +16,22 @@ class _ZyraDevicesPageState extends State<ZyraDevicesPage> {
   ZyraService get _service => widget.service ?? ZyraService();
   ZyraSessionContext get _context => widget.context ?? zyraSessionContext;
   ZyraSessionInventory? inventory;
+  ZyraTransportProbe? probe;
   bool includeInactive = false;
   bool loading = false;
+  bool probing = false;
   String? error;
+
+  Future<void> _probeConnection() async {
+    if (probing) return;
+    setState(() => probing = true);
+    try {
+      final result = await const ZyraConnectionDiagnostics().probe(_service.target.uri.resolve('/health'));
+      if (mounted) setState(() => probe = result);
+    } finally {
+      if (mounted) setState(() => probing = false);
+    }
+  }
 
   Future<void> _load() async {
     final credentials = _context.credentials;
@@ -73,8 +87,33 @@ class _ZyraDevicesPageState extends State<ZyraDevicesPage> {
 
   @override
   Widget build(BuildContext context) => ListView(padding: const EdgeInsets.fromLTRB(24, 28, 24, 40), children: [
-        Row(children: [const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Devices', style: TextStyle(fontSize: 31, fontWeight: FontWeight.w700)), SizedBox(height: 5), Text('Manage sessions authorized for your device.', style: TextStyle(color: Colors.white54))])), IconButton(onPressed: loading ? null : _load, tooltip: 'Refresh', icon: const Icon(Icons.refresh))]),
+        Row(children: [
+          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Devices', style: TextStyle(fontSize: 31, fontWeight: FontWeight.w700)),
+            SizedBox(height: 5),
+            Text('Manage sessions and verify the local connection path.', style: TextStyle(color: Colors.white54)),
+          ])),
+          IconButton(onPressed: loading ? null : _load, tooltip: 'Refresh sessions', icon: const Icon(Icons.refresh)),
+        ]),
         const SizedBox(height: 18),
+        Card(child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [
+          const Icon(Icons.lan_outlined), const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(_service.target.displayName, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 3),
+            Text('${_service.target.uri.host}:${_service.target.uri.port}', style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          ])),
+          FilledButton.tonalIcon(onPressed: probing ? null : _probeConnection, icon: probing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.network_check_outlined), label: const Text('Test')),
+        ])),
+        if (probe != null) ...[
+          const SizedBox(height: 10),
+          Card(child: ListTile(
+            leading: Icon(probe!.reachable ? Icons.check_circle_outline : Icons.error_outline),
+            title: Text(probe!.reachable ? 'Transport reachable' : 'Transport unavailable'),
+            subtitle: Text(probe!.reachable ? '${probe!.statusCode} · ${probe!.latency.inMilliseconds} ms' : '${probe!.reason ?? 'probe_failed'} · ${probe!.latency.inMilliseconds} ms'),
+          )),
+        ],
+        const SizedBox(height: 12),
         Card(child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [const Icon(Icons.verified_user_outlined), const SizedBox(width: 12), Expanded(child: Text(_context.configured ? 'Authenticated session configured' : 'No authenticated session configured', style: const TextStyle(fontWeight: FontWeight.w600))), if (_context.configured) Text(_context.deviceId, style: const TextStyle(color: Colors.white54, fontSize: 12))]))),
         const SizedBox(height: 12),
         SwitchListTile.adaptive(contentPadding: const EdgeInsets.symmetric(horizontal: 4), value: includeInactive, onChanged: loading ? null : (v) => setState(() => includeInactive = v), title: const Text('Show inactive sessions'), subtitle: const Text('Historical sessions are read-only.', style: TextStyle(color: Colors.white54))),
@@ -91,12 +130,11 @@ class _Inventory extends StatelessWidget {
   final Future<void> Function(ZyraSession) onRevoke;
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Card(child: Padding(padding: const EdgeInsets.all(18), child: Row(children: [_Stat('Total', inventory.summary.total), _Stat('Active', inventory.summary.active), _Stat('Inactive', inventory.summary.inactive)]))),
-        const SizedBox(height: 20),
-        const Text('Sessions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)), const SizedBox(height: 10),
-        if (inventory.sessions.isEmpty) const _EmptyCard(message: 'No sessions returned.'),
-        for (final session in inventory.sessions) Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(leading: Icon(session.active ? Icons.verified_user_outlined : Icons.history_outlined), title: Row(children: [Expanded(child: Text(_short(session.sessionId))), if (session.current) const Chip(label: Text('Current'))]), subtitle: Text(session.active ? 'Active · expires ${session.expiresAt}' : 'Inactive${session.revoked ? ' · revoked' : ''}'), trailing: session.active && !session.current ? IconButton(onPressed: () => onRevoke(session), tooltip: 'Revoke', icon: const Icon(Icons.block_outlined)) : null)),
-      ]);
+    Card(child: Padding(padding: const EdgeInsets.all(18), child: Row(children: [_Stat('Total', inventory.summary.total), _Stat('Active', inventory.summary.active), _Stat('Inactive', inventory.summary.inactive)]))),
+    const SizedBox(height: 20), const Text('Sessions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)), const SizedBox(height: 10),
+    if (inventory.sessions.isEmpty) const _EmptyCard(message: 'No sessions returned.'),
+    for (final session in inventory.sessions) Card(margin: const EdgeInsets.only(bottom: 10), child: ListTile(leading: Icon(session.active ? Icons.verified_user_outlined : Icons.history_outlined), title: Row(children: [Expanded(child: Text(_short(session.sessionId))), if (session.current) const Chip(label: Text('Current'))]), subtitle: Text(session.active ? 'Active · expires ${session.expiresAt}' : 'Inactive${session.revoked ? ' · revoked' : ''}'), trailing: session.active && !session.current ? IconButton(onPressed: () => onRevoke(session), tooltip: 'Revoke', icon: const Icon(Icons.block_outlined)) : null)),
+  ]);
   String _short(String value) => value.length <= 18 ? value : '${value.substring(0, 8)}…${value.substring(value.length - 6)}';
 }
 
