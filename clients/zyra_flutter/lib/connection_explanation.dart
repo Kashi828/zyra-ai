@@ -16,6 +16,17 @@ class ZyraConnectionExplanation {
     required ZyraConnectionTarget target,
     ZyraTransportProbe? probe,
   }) {
+    // A response proves the transport path is reachable, even when the API
+    // itself reports a server-side failure. Check the status code before the
+    // generic unreachable branch so 5xx responses are explained correctly.
+    if (probe?.statusCode != null && probe!.statusCode! >= 500) {
+      return ZyraConnectionExplanation(
+        title: 'Windows API error',
+        message: 'The Windows API responded with HTTP ${probe.statusCode}. The network path is reachable.',
+        action: 'Check the Windows API service logs and retry.',
+      );
+    }
+
     if (probe != null && !probe.reachable) {
       final reason = switch (probe.reason) {
         'timeout' => 'The Windows host did not respond before the timeout.',
@@ -28,14 +39,6 @@ class ZyraConnectionExplanation {
         action: target.isAndroidEmulatorBridge
             ? 'Start the Windows API and verify the emulator bridge is available.'
             : 'Start the Windows API and verify the phone and PC are on the same network.',
-      );
-    }
-
-    if (probe?.statusCode != null && probe!.statusCode! >= 500) {
-      return ZyraConnectionExplanation(
-        title: 'Windows API error',
-        message: 'The Windows API responded with HTTP ${probe.statusCode}. The network path is reachable.',
-        action: 'Check the Windows API service logs and retry.',
       );
     }
 
