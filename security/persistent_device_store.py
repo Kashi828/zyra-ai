@@ -151,6 +151,35 @@ class PersistentDeviceStore:
             ).fetchone()
         return bool(row and not row[1] and row[0] > now)
 
+    def rotate_session(self, old_session_id: str, ttl_seconds: int = 900):
+        """Atomically revoke `old_session_id` and issue a fresh session for
+        the same device. Raises PermissionError if the old session is not
+        currently valid (unknown, expired, or already revoked/rotated), so a
+        replayed rotation request cannot mint additional live sessions."""
+        now = int(time.time())
+        with self._lock, self._connect() as db:
+            row = db.execute(
+                "SELECT device_id, expires_at, revoked FROM device_sessions "
+                "WHERE session_id=?",
+                (old_session_id,),
+            ).fetchone()
+            if not row or row[2] or row[1] <= now:
+                raise PermissionError("invalid or expired session")
+            device_id = row[0]
+            db.execute(
+                "UPDATE device_sessions SET revoked=1 WHERE session_id=?",
+                (old_session_id,),
+            )
+            new_session_id = self.issue_session_id()
+            expires_at = now + int(ttl_seconds)
+            db.execute(
+                "INSERT INTO device_sessions "
+                "(session_id, device_id, expires_at, revoked, created_at) "
+                "VALUES (?, ?, ?, 0, ?)",
+                (new_session_id, device_id, expires_at, now),
+            )
+        return new_session_id, device_id, expires_at
+
     def revoke_session(self, session_id: str):
         with self._lock, self._connect() as db:
             db.execute("UPDATE device_sessions SET revoked=1 WHERE session_id=?", (session_id,))

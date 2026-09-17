@@ -151,4 +151,28 @@ def create_app(db_path=None, runner=None):
         security.api_auth,
         security.store,
     )
+
+    import hmac as _hmac
+    from security.enrollment_session_bridge import EnrollmentSessionBridge
+    from security.activation_replay_guard import ActivationReplayGuard
+    from api.session_activation_routes import register_session_activation_routes
+
+    activation_bridge = EnrollmentSessionBridge(security.store)
+    activation_replay_guard = ActivationReplayGuard()
+
+    def _verify_activation_proof(device_id, nonce, timestamp, proof):
+        # The raw enrollment secret is never persisted server-side, so both
+        # sides derive the HMAC key from the stored/derivable secret hash
+        # instead of the raw secret itself.
+        device = security.store.get_device(device_id)
+        if not device:
+            return False
+        key = device["secret_hash"].encode("utf-8")
+        expected = EnrollmentSessionBridge.proof(key, nonce, timestamp)
+        return _hmac.compare_digest(expected, proof)
+
+    app.state.activation_bridge = activation_bridge
+    register_session_activation_routes(
+        app, activation_bridge, activation_replay_guard, _verify_activation_proof
+    )
     return app

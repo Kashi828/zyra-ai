@@ -24,20 +24,18 @@ class WindowsCommandRegistry:
         }
 
     @staticmethod
-    def _default_runner(action: str, payload: dict) -> str:
+    def _validate(action: str, payload: dict) -> dict:
+        """Validate and normalize a payload. Runs regardless of which runner
+        is installed, so a custom/test runner can never bypass these checks."""
         if action == "open_app":
             name = str(payload.get("name", "")).strip()
             if not name or len(name) > 260 or any(c in name for c in "\r\n"):
                 raise ValueError("invalid application name")
-            subprocess.Popen(["cmd", "/c", "start", "", name], shell=False)
-            return f"launched:{name}"
+            return {"name": name}
 
         if action == "open_folder":
             path = os.path.abspath(str(payload.get("path", "")))
-            if not os.path.isdir(path):
-                raise FileNotFoundError("folder not found")
-            os.startfile(path)
-            return f"opened_folder:{path}"
+            return {"path": path}
 
         if action == "open_url":
             url = str(payload.get("url", "")).strip()
@@ -46,6 +44,26 @@ class WindowsCommandRegistry:
                 raise ValueError("URL must be a valid http(s) URL")
             if parsed.username or parsed.password or parsed.fragment:
                 raise ValueError("URL credentials/fragments are not allowed")
+            return {"url": url}
+
+        raise ValueError("unsupported action")
+
+    @staticmethod
+    def _default_runner(action: str, payload: dict) -> str:
+        if action == "open_app":
+            name = payload["name"]
+            subprocess.Popen(["cmd", "/c", "start", "", name], shell=False)
+            return f"launched:{name}"
+
+        if action == "open_folder":
+            path = payload["path"]
+            if not os.path.isdir(path):
+                raise FileNotFoundError("folder not found")
+            os.startfile(path)
+            return f"opened_folder:{path}"
+
+        if action == "open_url":
+            url = payload["url"]
             import webbrowser
             webbrowser.open(url)
             return f"opened_url:{url}"
@@ -61,4 +79,5 @@ class WindowsCommandRegistry:
             raise ValueError("unsupported action")
         if spec.capability not in capabilities:
             raise PermissionError("missing capability")
-        return self._runner(action, payload)
+        safe_payload = self._validate(action, payload)
+        return self._runner(action, safe_payload)

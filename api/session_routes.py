@@ -116,7 +116,12 @@ def register_session_routes(app, session_service, audit_log=None):
 
     @app.post("/v1/session/logout")
     def logout(body: dict):
-        device_id, session_id = _authenticate_session(session_service, body)
+        # Logging out is a credential-bearing action: knowing a live
+        # session_id alone must not be enough, or a hijacked/leaked session
+        # id could be used to force a log-out (denial of service) without
+        # proving possession of the device secret.
+        device_id = _authenticate_device(session_service, body)
+        _, session_id = _authenticate_session(session_service, body)
         target_session = str(body.get("target_session_id") or session_id)
         if target_session != session_id:
             raise HTTPException(status_code=403, detail="a session can only revoke itself")
