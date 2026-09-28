@@ -20,4 +20,4 @@ def test_pairing_flow():
 
 def test_ui_hooks():
     assert 'id="pairDevice"' in Path("desktop/index.html").read_text()
-    assert "/v1/devices/pairing/offer" in Path("desktop/app.js").read_text()
+    assert "/v1/desktop/pairing/offer" in Path("desktop/app.js").read_text()

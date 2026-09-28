@@ -73,7 +73,11 @@ function startBackend() {
       env,
     });
   } else {
-    backend = spawn(pythonExecutable(), ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"], {
+    const args = ["-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"];
+    // Opt-in only: lets a paired phone reach this PC. The backend's LAN guard
+    // (ZYRA_LAN_MODE=1) limits non-local peers to the pairing/session/command routes.
+    if (process.env.ZYRA_LAN_MODE === "1") args[4] = "0.0.0.0";
+    backend = spawn(pythonExecutable(), args, {
       cwd: path.resolve(__dirname, ".."),
       windowsHide: true,
       stdio: "ignore",
@@ -155,7 +159,12 @@ function createWindow() {
       sandbox: true,
     },
   });
-  mainWindow.loadFile(path.join(__dirname, "..", "desktop", "index.html"));
+  // The UI is served by the local backend so its relative /v1/... calls resolve
+  // (they cannot from a file:// page). Fall back to the file only if that fails.
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.loadURL("http://127.0.0.1:8000/").catch(() => {
+    mainWindow?.loadFile(path.join(__dirname, "..", "desktop", "index.html"));
+  });
   mainWindow.on("closed", () => { mainWindow = null; });
 }
 

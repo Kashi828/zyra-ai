@@ -175,4 +175,23 @@ def create_app(db_path=None, runner=None):
     register_session_activation_routes(
         app, activation_bridge, activation_replay_guard, _verify_activation_proof
     )
+
+    # Desktop app surface: task submission, agent stop, phone pairing, and the UI itself.
+    from api.runtime_routes import register_runtime_routes
+    from api.desktop_api import register_desktop_routes
+    from api.desktop_pairing_routes import register_desktop_pairing_routes
+    from api.desktop_ui_routes import register_desktop_ui_routes
+
+    register_runtime_routes(app, runtime)
+    register_desktop_routes(app, runtime)
+    register_desktop_pairing_routes(
+        app, app.state.pairing_enrollment, port=int(os.getenv("ZYRA_PORT", "8000"))
+    )
+
+    if os.getenv("ZYRA_LAN_MODE", "") == "1":
+        from api.lan_guard import LanGuardMiddleware
+        app.add_middleware(LanGuardMiddleware)
+
+    # Registered last so its /{name} catch-all never shadows an API route.
+    register_desktop_ui_routes(app)
     return app

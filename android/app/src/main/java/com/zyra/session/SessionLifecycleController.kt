@@ -44,11 +44,11 @@ class SessionLifecycleController(
                     deviceId = deviceId,
                     sessionId = refreshed.sessionId,
                     refreshToken = refreshed.refreshToken,
-                    expiresAtEpochSeconds = refreshed.expiresAt,
+                    expiresAtEpochSeconds = refreshed.sessionExpiresAt,
                     refreshExpiresAtEpochSeconds = max(refreshed.expiresAt, current.refreshExpiresAtEpochSeconds)
                 )
                 storage.save(next)
-                return DeviceSession(deviceId, refreshed.sessionId, refreshed.expiresAt, true)
+                return DeviceSession(deviceId, refreshed.sessionId, refreshed.sessionExpiresAt, true)
             } catch (_: Exception) {
                 storage.clear()
             }
@@ -60,11 +60,11 @@ class SessionLifecycleController(
                 deviceId = deviceId,
                 sessionId = created.sessionId,
                 refreshToken = created.refreshToken,
-                expiresAtEpochSeconds = created.expiresAt,
+                expiresAtEpochSeconds = created.sessionExpiresAt,
                 refreshExpiresAtEpochSeconds = created.expiresAt
             )
         )
-        return DeviceSession(deviceId, created.sessionId, created.expiresAt, true)
+        return DeviceSession(deviceId, created.sessionId, created.sessionExpiresAt, true)
     }
 
     fun logout(): Boolean {

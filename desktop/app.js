@@ -209,8 +209,14 @@ async function startPairing(){
   if(!el) return;
   el.textContent="Preparing secure pairing offer...";
   try{
-    const r=await api("/v1/devices/pairing/offer",{method:"POST"});
-    el.textContent=r.offer?`Offer ready · ${r.offer.pc_name} · ${r.offer.fingerprint}`:"Pairing service unavailable.";
+    const r=await api("/v1/desktop/pairing/offer",{method:"POST",body:JSON.stringify({})});
+    const minutes=Math.max(1,Math.round((r.expires_at-Date.now()/1000)/60));
+    const addresses=(r.addresses||[]).length?r.addresses.join(" or "):"your PC's local address (port 8000)";
+    el.innerHTML=`<div><b>Enter these in the ZYRA app on your phone:</b></div>`
+      +`<div>PC address: <code>${escapeHtml(addresses)}</code></div>`
+      +`<div>Offer ID: <code>${escapeHtml(r.offer_id)}</code></div>`
+      +`<div>Code: <code style="font-size:1.4em;letter-spacing:.15em">${escapeHtml(r.pairing_code)}</code></div>`
+      +`<small>Single-use · expires in about ${minutes} min. Start ZYRA with ZYRA_LAN_MODE=1 so your phone can reach this PC.</small>`;
   }catch(e){el.textContent=`Pairing unavailable: ${e.message}`;}
 }
 document.getElementById("pairDevice")?.addEventListener("click",startPairing);

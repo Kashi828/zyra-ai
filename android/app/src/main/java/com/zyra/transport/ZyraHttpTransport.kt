@@ -16,8 +16,15 @@ import java.net.URL
 class ZyraHttpTransport(
     private val baseUrl: String,
     private val connectTimeoutMs: Int = 10000,
-    private val readTimeoutMs: Int = 10000
+    private val readTimeoutMs: Int = 10000,
+    /** Supplies the hex device secret issued once at pairing (never logged). */
+    private val deviceSecret: () -> String? = { null }
 ) : SessionApi {
+
+    private fun withSecret(body: JSONObject): JSONObject {
+        deviceSecret()?.let { body.put("device_secret", it) }
+        return body
+    }
 
     private fun post(path: String, body: JSONObject): JSONObject {
         val connection = (URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection)
@@ -39,12 +46,13 @@ class ZyraHttpTransport(
     }
 
     override fun create(deviceId: String): CreateSessionResponse {
-        val json = post("/v1/session/create", JSONObject().put("device_id", deviceId))
+        val json = post("/v1/session/create", withSecret(JSONObject().put("device_id", deviceId)))
         return CreateSessionResponse(
             ok = json.optBoolean("ok", false),
             sessionId = json.getString("session_id"),
             refreshToken = json.getString("refresh_token"),
-            expiresAt = json.getLong("expires_at")
+            expiresAt = json.getLong("expires_at"),
+            sessionExpiresAt = json.optLong("session_expires_at", json.getLong("expires_at"))
         )
     }
 
@@ -59,7 +67,8 @@ class ZyraHttpTransport(
             ok = json.optBoolean("ok", false),
             sessionId = json.getString("session_id"),
             refreshToken = json.getString("refresh_token"),
-            expiresAt = json.getLong("expires_at")
+            expiresAt = json.getLong("expires_at"),
+            sessionExpiresAt = json.optLong("session_expires_at", json.getLong("expires_at"))
         )
     }
 
@@ -67,9 +76,11 @@ class ZyraHttpTransport(
         return try {
             val json = post(
                 "/v1/session/logout",
-                JSONObject()
-                    .put("device_id", deviceId)
-                    .put("session_id", sessionId)
+                withSecret(
+                    JSONObject()
+                        .put("device_id", deviceId)
+                        .put("session_id", sessionId)
+                )
             )
             json.optBoolean("ok", false)
         } catch (_: Exception) {
